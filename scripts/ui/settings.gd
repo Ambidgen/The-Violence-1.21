@@ -8,7 +8,8 @@ extends RefCounted
 const PATH := "user://settings.cfg"
 const SPEEDS := [0.5, 1.0, 2.0, 5.0, 10.0]
 const DEFAULTS := {"fullscreen": false, "master": 0.8, "effects": 0.9, "ambience": 0.5,
-	"red_ink": true, "gore": true, "speed": 2.0, "tips": true, "seen_manual": false, "intro": true}
+	"red_ink": true, "gore": true, "speed": 2.0, "tips": true, "seen_manual": false, "intro": true,
+	"veteran": false}   # Q4: veteran chief — no Suggest a plan; every squad is the player's own
 
 static var data := DEFAULTS.duplicate()
 static var _loaded := false

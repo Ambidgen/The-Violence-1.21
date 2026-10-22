@@ -10,6 +10,8 @@ extends RefCounted
 ## with deaths. Force (excessive force, civilians hit by police) is not in this score:
 ## it is the department's other reputation, which the city remembers (Politics, v0.9).
 
+const Orders = preload("res://scripts/campaign/orders.gd")
+
 const BASE := {"success": 100, "partial": 65, "failure": 30, "quiet": 100}
 const LABELS := {"success": "Success", "partial": "Partial success", "failure": "Failure", "quiet": "Passed quietly"}
 
@@ -144,3 +146,79 @@ static func evaluate(sit: Dictionary, w) -> Dictionary:
 		"deaths": deaths, "officers_killed": int(s.get("officers_killed", 0)), "civ_killed": int(s.get("civ_killed", 0)),
 		"escaped": escaped, "aborted": w.aborted, "t": w.t, "squads": squads, "findings": int(s.get("findings", 0)),
 		"orders_broken": w.broken.size()}
+
+
+## What the chief changed, and whether it held (Q4). suggested is the plan Suggest
+## produced when the situation was opened (or last pressed); executed is what ran.
+## One line per squad that differs (objectives, constraints, entry, officers),
+## closed with what that squad's objectives did and whether it broke an order —
+## the closest the debrief can honestly come to "your edit was better" without
+## running the operation twice. op_test.gd does run it twice, suggestion against
+## an intel-reading chief, on matched seeds.
+static func plan_diff(suggested: Dictionary, executed: Dictionary, res: Dictionary, w) -> Array:
+	if suggested.is_empty():
+		return []
+	var s_sq: Array = suggested.get("squads", [])
+	var e_sq: Array = executed.get("squads", [])
+	if s_sq == e_sq and bool(suggested.get("night", false)) == bool(executed.get("night", false)):
+		return ["You ran the suggestion unchanged."]
+	var broken_sq := {}
+	for b in w.broken:
+		var o = w.by_id.get(b["id"], null)
+		if o != null and o.squad >= 0:
+			broken_sq[o.squad] = int(broken_sq.get(o.squad, 0)) + 1
+	var by_i := {}
+	for sqr in res.get("squads", []):
+		by_i[int(sqr["i"])] = sqr
+	var lines: Array = []
+	for i in maxi(s_sq.size(), e_sq.size()):
+		if i >= e_sq.size():
+			lines.append("Squad %d: in the suggestion, dropped by you." % (i + 1))
+			continue
+		if i >= s_sq.size():
+			lines.append("Squad %d: yours (no squad here in the suggestion): %s." % [i + 1, _fate(by_i.get(i, {}), broken_sq.get(i, 0))])
+			continue
+		var a: Dictionary = s_sq[i]
+		var b2: Dictionary = e_sq[i]
+		if a == b2:
+			continue
+		var bits: Array = []
+		var ma: Array = a.get("members", [])
+		var mb: Array = b2.get("members", [])
+		if ma != mb:
+			bits.append("%d officer%s (suggestion: %d)" % [mb.size(), "" if mb.size() == 1 else "s", ma.size()])
+		var oa: Dictionary = a.get("orders", {})
+		var ob: Dictionary = b2.get("orders", {})
+		var ka: Array = (oa.get("objs", []) as Array).map(func(x): return Orders.OBJECTIVES.get(x.get("kind", ""), {}).get("name", x.get("kind", "")))
+		var kb: Array = (ob.get("objs", []) as Array).map(func(x): return Orders.OBJECTIVES.get(x.get("kind", ""), {}).get("name", x.get("kind", "")))
+		if ka != kb:
+			bits.append("objective %s (suggestion: %s)" % [", then ".join(kb), ", then ".join(ka)])
+		var changed: Array = []
+		for key in ["entry", "consolidate", "pace"]:
+			if String(oa.get(key, "")) != String(ob.get(key, "")):
+				changed.append(Orders.CONSTRAINTS[key]["name"].to_lower())
+		for key2 in ["tight", "less", "knock", "pistols"]:
+			if bool(oa.get(key2, false)) != bool(ob.get(key2, false)):
+				changed.append(Orders.CONSTRAINTS[key2]["name"] + (" on" if bool(ob.get(key2, false)) else " off"))
+		if (oa.get("avoid", []) as Array).size() != (ob.get("avoid", []) as Array).size():
+			changed.append("avoid %d room%s" % [(ob.get("avoid", []) as Array).size(), "" if (ob.get("avoid", []) as Array).size() == 1 else "s"])
+		if (oa.get("phase", {}) as Dictionary).is_empty() != (ob.get("phase", {}) as Dictionary).is_empty():
+			changed.append("phase line" + (" set" if not (ob.get("phase", {}) as Dictionary).is_empty() else " lifted"))
+		if not changed.is_empty():
+			bits.append(", ".join(changed))
+		if int(a.get("stage", 0)) != int(b2.get("stage", 0)):
+			bits.append("a different forming-up stage")
+		lines.append("Squad %d — your %s: %s." % [i + 1, "; ".join(bits) if not bits.is_empty() else "edits", _fate(by_i.get(i, {}), broken_sq.get(i, 0))])
+	if bool(suggested.get("night", false)) != bool(executed.get("night", false)):
+		lines.append("You went in at %s; the suggestion had it by %s." % ["night" if bool(executed.get("night", false)) else "day",
+			"night" if bool(suggested.get("night", false)) else "day"])
+	return lines if not lines.is_empty() else ["You ran the suggestion unchanged."]
+
+
+## One squad's account of itself, for the diff's closing clause.
+static func _fate(sqr: Dictionary, broken: int) -> String:
+	var fate := "objective unresolved when it ended"
+	if not sqr.is_empty() and not (sqr.get("results", []) as Array).is_empty():
+		var met: int = (sqr["results"] as Array).filter(func(r): return bool(r.get("ok", false))).size()
+		fate = "%d of %d objective%s met" % [met, (sqr["results"] as Array).size(), "" if (sqr["results"] as Array).size() == 1 else "s"]
+	return fate + (", no orders broken" if broken == 0 else (", %d order%s broken" % [broken, "" if broken == 1 else "s"]))

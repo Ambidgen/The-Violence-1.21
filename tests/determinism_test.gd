@@ -96,6 +96,7 @@ func _match(case: Array, seed_v: int) -> Dictionary:
 ## the roster as the campaign does). Returns key -> result.
 func _operations(cseed: int) -> Dictionary:
 	var out := {}
+	Campaign.read_city_file = false   # Q7: a hashed board may not inherit this machine's watched city
 	var c = Campaign.new()
 	c.start(cseed)
 	for s in c.board:

@@ -781,11 +781,19 @@ func ops_select(sid: String) -> void:
 	_load_map(int(cur_sit["map"]))
 	ui.set_map_title(level)
 	if cur_sit.get("plan", {}).is_empty():
-		var av: Array = campaign.available_for(sid)
-		cur_sit["plan"] = Autoplan.suggest(cur_sit, av, level, dept.bodycams, Autoplan.share(campaign.board, sid, av.size()))
-		dept.settle_kits()
-		if campaign.plan_members(cur_sit).is_empty():
-			ops_ui.flash = "Too few officers are free for this (four through a door, six into a crew house or a hostage taking): the suggestion is to send nobody. You can still assign officers yourself on the Force tab."
+		if bool(Settings.get_v("veteran")):
+			# Q4: veteran chief — the board is blank and stays that way until the
+			# player plans it; the debrief has no suggestion to diff against
+			cur_sit["plan"] = {"squads": [], "night": false, "bodycams": dept.bodycams}
+			cur_sit["suggested"] = {}
+			ops_ui.flash = "Veteran chief: no suggested plan. Form the squads yourself on the Force tab."
+		else:
+			var av: Array = campaign.available_for(sid)
+			cur_sit["plan"] = Autoplan.suggest(cur_sit, av, level, dept.bodycams, Autoplan.share(campaign.board, sid, av.size()))
+			cur_sit["suggested"] = cur_sit["plan"].duplicate(true)   # Q4: what the debrief diffs the run against
+			dept.settle_kits()
+			if campaign.plan_members(cur_sit).is_empty():
+				ops_ui.flash = "Too few officers are free for this (four through a door, six into a crew house or a hostage taking): the suggestion is to send nobody. You can still assign officers yourself on the Force tab."
 	plan = cur_sit["plan"]
 	mode = "plan"
 	_clear_views()
@@ -804,10 +812,13 @@ func plan_changed() -> void:
 
 
 func ops_suggest() -> void:
+	if bool(Settings.get_v("veteran")):   # Q4: no suggestion to regenerate
+		return
 	var av: Array = campaign.available_for(cur_sit["id"])
 	plan = Autoplan.suggest(cur_sit, av, level, dept.bodycams, Autoplan.share(campaign.board, cur_sit["id"], av.size()))
 	dept.settle_kits()
 	cur_sit["plan"] = plan
+	cur_sit["suggested"] = plan.duplicate(true)
 	plan_marks.setup(level, nav, cur_sit, plan)
 	ops_ui.show_plan()
 
@@ -922,6 +933,7 @@ func _op_finished() -> void:
 	if view_t >= 0.0:
 		ops_live()
 	var res: Dictionary = Outcome.evaluate(cur_sit, world)
+	res["diff"] = Outcome.plan_diff(cur_sit.get("suggested", {}), plan, res, world)   # Q4: your edits, and whether they held
 	var lines: Array = dept.apply_result(world, level.map_name)
 	for b in world.broken:
 		var o = world.by_id.get(b["id"], null)

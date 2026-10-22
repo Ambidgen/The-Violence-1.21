@@ -8,8 +8,10 @@ const Campaign = preload("res://scripts/campaign/campaign.gd")
 const Politics = preload("res://scripts/campaign/politics.gd")
 const Department = preload("res://scripts/campaign/department.gd")
 const Situations = preload("res://scripts/campaign/situations.gd")
+const Autoplan = preload("res://scripts/campaign/autoplan.gd")
 
 var problems := 0
+var _low_leaks := 0
 
 
 func _check(ok: bool, what: String) -> void:
@@ -139,6 +141,66 @@ func _init() -> void:
 	c5.from_data(JSON.parse_string(j))
 	var j5 := JSON.stringify(c5.to_data())
 	_check(j5 == j, "the campaign, politics included, survives a save")
+	# Q3: a cleared case leaks by the officer's integrity, not just its evidence
+	_check(Politics.leak_p("video", 60) > Politics.leak_p("witness", 60), "video still leaks more than witnesses at the same name")
+	_check(Politics.leak_p("video", 10) > Politics.leak_p("video", 95), "integrity 10 leaks (%.2f) more than integrity 95 (%.2f)" % [Politics.leak_p("video", 10), Politics.leak_p("video", 95)])
+	_check(Politics.leak_p("video", 60, "disagrees") > Politics.leak_p("video", 60, "matches"), "a statement the camera contradicts leaks more than one it backs up")
+	for fixture in [[10, "low"], [95, "high"]]:
+		var leaked := 0
+		for k in 80:
+			var px = Politics.new()
+			px.start(4000 + k * 3 + fixture[0])
+			px.on_decision(1, {"id": "IA-X", "officer": "PC-X", "kind": "excessive_force", "strength": "video", "text": "x", "integrity": fixture[0]}, "clear", null)
+			leaked += px.pending.filter(func(x): return x["kind"] == "leak").size()
+		if fixture[1] == "low":
+			_low_leaks = leaked
+		else:
+			_check(leaked < _low_leaks, "over 80 cleared cases: integrity 95 leaked %d, integrity 10 leaked %d" % [leaked, _low_leaks])
+	# and clearing a man the camera contradicted costs the DA and the coalition more
+	var pa = Politics.new()
+	pa.start(21)
+	var da0: int = pa.standing("da")
+	pa.on_decision(1, {"id": "IA-1", "officer": "PC-X", "kind": "excessive_force", "strength": "video", "text": "x", "integrity": 60, "statement": "matches"}, "clear", null)
+	var pb = Politics.new()
+	pb.start(21)
+	pb.on_decision(1, {"id": "IA-1", "officer": "PC-X", "kind": "excessive_force", "strength": "video", "text": "x", "integrity": 60, "statement": "disagrees"}, "clear", null)
+	_check(pb.standing("da") < pa.standing("da") and pa.standing("da") < da0, "the DA reads the statement: contradicted %d, matched %d (from %d)" % [pb.standing("da"), pa.standing("da"), da0])
+	# Q8: the grant — ally-gated, once a quarter, and asking costs goodwill
+	var cg = Campaign.new()
+	cg.start(17)
+	_check(cg.politics.can_grant(1) != "", "at the opening standing (%d) the committee says no" % cg.politics.standing("council"))
+	var waste: Array = []
+	cg.politics._ally("council", 10, cg.dept, waste)
+	var gb0: int = cg.dept.balance
+	var gs0: int = cg.politics.standing("council")
+	var gr: Dictionary = cg.politics.apply_grant(1, cg.dept)
+	_check(bool(gr["ok"]) and cg.dept.balance == gb0 + Politics.GRANT_AMOUNT and cg.politics.standing("council") == gs0 - Politics.GRANT_FAVOUR,
+		"the grant lands ($%s) and the favour is spent (%d -> %d)" % [Department.money(Politics.GRANT_AMOUNT), gs0, cg.politics.standing("council")])
+	_check(cg.politics.can_grant(4) != "" and cg.politics.can_grant(1 + Politics.GRANT_COOLDOWN) == "",
+		"and the committee will not be asked again for %d weeks" % Politics.GRANT_COOLDOWN)
+	var jg := JSON.stringify(cg.politics.to_data())
+	var pg = Politics.new()
+	pg.from_data(JSON.parse_string(jg), 17)
+	_check(JSON.stringify(pg.to_data()) == jg and pg.last_grant == 1, "the grant week survives a save")
+	# Q10: chatter priced in the briefing, and the suggestion sized by it
+	var sit: Dictionary = Situations.make("event", 4242, 1, 0)
+	var ch: Dictionary = Situations.chatter(sit)
+	_check(int(ch.get("odds", 0)) >= 2 and int(ch.get("conf", 0)) >= 30, "a fresh rally reads as a priced bet (1 in %d, %d%%)" % [int(ch.get("odds", 0)), int(ch.get("conf", 0))])
+	for f in sit["intel"]:
+		if f.get("key", "") == "threat":
+			f["level"] = "lowered"
+			f["est"] = "lowered (about 1 in 20)"
+	_check(Autoplan.want_for(sit) == Autoplan.EVENT_WANT_LOW, "lowered chatter: the suggestion sends six")
+	for f2 in sit["intel"]:
+		if f2.get("key", "") == "threat":
+			f2["level"] = "raised"
+			f2["est"] = "raised (about 1 in 5)"
+	_check(Autoplan.want_for(sit) == Autoplan.WANT["event"], "raised chatter: the full ten")
+	var threat_line := ""
+	for ln in Situations.briefing_lines(sit):
+		if String(ln["label"]) == "Threat estimate":
+			threat_line = String(ln["text"])
+	_check(threat_line.find("cries wolf") >= 0, "and the briefing carries the confidence: %s" % threat_line)
 	# a version 1 save (before v0.9) loads, with the city starting fresh
 	var old: Dictionary = c2.to_data()
 	old["version"] = 1

@@ -3,13 +3,40 @@ extends RefCounted
 ## orders screens open with, and the plan the scripted chief uses in the campaign test.
 ## It is only a suggestion: squads formed by the formation rules (v0.8, Squads.sizes),
 ## the obvious objectives, a constraint or two the leaders can afford.
+##
+## What the suggestion reads, and what it must never read (playtest pass Q4).
+## suggest() consumes the rough shape of the call: its type, the building's
+## geometry (stages, exterior doors by distance), the officers' ranks, and two
+## things the briefing has made public by confirming them — a *confirmed* hostage
+## room, and the rally chatter's level for sizing (want_for: a confidence-rated
+## estimate, never the true attack roll). Reserved for the human planner, who is
+## paid to read the briefing and canvass for more of it: every unconfirmed
+## estimate — the guessed rooms, the lookout, whether the doors are locked, how
+## many civilians are inside, whether the named man runs. The suggestion also
+## never picks an entry door, an avoided room or a consolidation room. Reading
+## is therefore worth something measurable: tests/op_test.gd --chief=manual
+## plays the same seeds with a chief who edits from confirmed intel, and the
+## debrief (Outcome.plan_diff) shows what your edits were and whether they held.
 
 const Orders = preload("res://scripts/campaign/orders.gd")
 const Equipment = preload("res://scripts/data/equipment.gd")
 const Operation = preload("res://scripts/campaign/operation.gd")
+const Situations = preload("res://scripts/campaign/situations.gd")
 const Squads = preload("res://scripts/data/squads.gd")
 
 const WANT := {"warrant": 7, "gang": 10, "barricade": 7, "hostage": 9, "event": 10}
+## A rally on lowered chatter does not need the full ten standing in the sun (Q10):
+## six officers suffice; ten stays the answer when the chatter is raised (or there
+## is no word either way — silence is not safety).
+const EVENT_WANT_LOW := 6
+
+
+## How many officers the suggestion wants for one situation, priced by what the
+## briefing actually says.
+static func want_for(sit: Dictionary) -> int:
+	if sit.get("type", "") == "event" and String(Situations.chatter(sit).get("level", "")) == "lowered":
+		return EVENT_WANT_LOW
+	return int(WANT.get(sit.get("type", ""), 8))
 
 
 ## Exterior doors of a map as opening indices, nearest to a point first.
@@ -50,7 +77,7 @@ static func share(board: Array, sid: String, free: int) -> int:
 			continue
 		if s["id"] != sid and not s.get("plan", {}).get("squads", []).is_empty():
 			continue
-		var w: int = WANT.get(s["type"], 8)
+		var w: int = want_for(s)
 		total += w
 		if s["id"] == sid:
 			mine = w
@@ -72,7 +99,7 @@ static func share(board: Array, sid: String, free: int) -> int:
 ## cap: the most officers to take (-1: as many as the situation wants).
 static func suggest(sit: Dictionary, available: Array, lv, bodycams := false, cap := -1) -> Dictionary:
 	var pool := ranked(available)
-	var want: int = mini(WANT.get(sit["type"], 8), pool.size())
+	var want: int = mini(want_for(sit), pool.size())
 	if cap >= 0:
 		want = mini(want, cap)
 	want = mini(want, Squads.MAX_SIDE)
@@ -121,17 +148,20 @@ static func suggest(sit: Dictionary, available: Array, lv, bodycams := false, ca
 			if pts >= 1:
 				o1["objs"].append({"kind": "clear", "rooms": []})
 				pts -= 1
-			if sit["type"] == "barricade" and pts >= 2:
+			if sit["type"] == "barricade" and pts >= 1:   # tight is a 1-point order (Q6)
 				o1["tight"] = true
+				pts -= 1
 		"gang":
 			squads[0]["orders"]["objs"] = [{"kind": "clear", "rooms": []}]
 			if n_sq > 1:
 				squads[1]["orders"]["objs"] = [{"kind": "clear", "rooms": []}]
 		"hostage":
+			# only a confirmed hostage room: the estimated one is the human's bet
+			# to make, not the suggestion's (Q4)
 			var room := ""
 			for f in sit["intel"]:
-				if f["key"] == "hostage_room":
-					room = f["room"] if f["known"] else f.get("room_est", "")
+				if f["key"] == "hostage_room" and f["known"]:
+					room = f["room"]
 			squads[0]["orders"]["objs"] = [{"kind": "rescue", "rooms": [room] if room != "" else []}]
 			if n_sq > 1:
 				var st2: Vector2 = (stages[squads[0]["stage"]]["r"] as Rect2).get_center() if not stages.is_empty() else Vector2.ZERO

@@ -11,8 +11,10 @@ const Department = preload("res://scripts/campaign/department.gd")
 const Situations = preload("res://scripts/campaign/situations.gd")
 const Politics = preload("res://scripts/campaign/politics.gd")
 
-const VERSION := 2        # 2: v0.9, the city's politics
+const VERSION := 3        # 2: v0.9, the city's politics; 3: the endless-battle link (Q7)
 const SAVE_PATH := "user://campaign.json"
+const PRESSURE_PATH := "user://city_pressure.json"   # written by the city scene (Q7)
+static var read_city_file := true   # the determinism fixture turns this off: a hashed board may not depend on whether someone watched the city on this machine
 const WEEKS := 40
 
 var seed_val := 1001
@@ -21,6 +23,7 @@ var board: Array = []          # this week's situations
 var past: Array = []           # every situation of earlier weeks, with its outcome
 var rng := RandomNumberGenerator.new()
 var politics                   # v0.9: wards, allies, candidates, the press, the election
+var pressure := {}             # Q7: {wards: [{gang, hot, quiet} x6]} from the endless battle; {} = no city read yet
 
 
 func start(seed_v: int) -> void:
@@ -30,8 +33,11 @@ func start(seed_v: int) -> void:
 	dept.found(seed_v)
 	politics = Politics.new()
 	politics.start(seed_v)
+	pressure = load_city_pressure()   # Q7: inherit the watched city, if there is one
 	board = _new_board()
 	dept.note("Week 1: %d situations on the board." % board.size())
+	if not pressure.is_empty():
+		dept.note("The board is drawn from the city as it stands: %s." % pressure_summary())
 
 
 func week() -> int:
@@ -41,7 +47,8 @@ func week() -> int:
 func _new_board() -> Array:
 	if politics != null and politics.ended:
 		return []
-	return Situations.board(seed_val, dept.week, politics.trust if politics != null else [], politics == null or not politics.lost("coalition"))
+	return Situations.board(seed_val, dept.week, politics.trust if politics != null else [],
+		politics == null or not politics.lost("coalition"), pressure)
 
 
 func over() -> bool:
@@ -54,6 +61,12 @@ func after_operation(sid: String, result: Dictionary, w) -> Array:
 	if s.is_empty():
 		return []
 	return politics.on_operation(dept.week, s, result, w, dept)
+
+
+## The account four weeks out (Q8): the department's books against the city's
+## pending ledger (the lawsuits already filed).
+func forecast(weeks_n := 4) -> Array:
+	return dept.forecast(weeks_n, politics.pending if politics != null else [])
 
 
 ## Decide an internal affairs case: the department carries it out, the city watches.
@@ -143,9 +156,16 @@ func end_week() -> Array:
 	# the city's week: what was left undone, what lands, the polls; at week 40 the election
 	lines.append_array(politics.week_end(dept.week, board, dept))
 	lines.append_array(dept.next_week())
+	# Q7: if the endless battle has been watched since, the new board knows it —
+	# the city file is re-read; without one the campaign keeps its own reading
+	var fresh := load_city_pressure()
+	if not fresh.is_empty():
+		pressure = fresh
 	board = _new_board()
 	if not over():
 		dept.note("Week %d: %d situations on the board." % [dept.week, board.size()])
+		if not pressure.is_empty():
+			lines.append("The city: %s." % pressure_summary())
 	return lines
 
 
@@ -158,7 +178,8 @@ static func _brief_record(s: Dictionary) -> Dictionary:
 # ================================================================== saving
 func to_data() -> Dictionary:
 	return {"version": VERSION, "seed": seed_val, "rng_state": str(rng.state), "department": dept.to_data(),
-		"board": board.duplicate(true), "past": past.duplicate(true), "politics": politics.to_data()}
+		"board": board.duplicate(true), "past": past.duplicate(true), "politics": politics.to_data(),
+		"pressure": pressure.duplicate(true)}
 
 
 func from_data(d: Dictionary) -> bool:
@@ -173,6 +194,7 @@ func from_data(d: Dictionary) -> bool:
 		return false
 	board = d.get("board", [])
 	past = d.get("past", [])
+	pressure = d.get("pressure", {})   # version 2 and earlier: no city was ever read
 	# version 1 (before v0.9) had no politics: the city starts from the wards' trust now
 	politics = Politics.new()
 	politics.from_data(d.get("politics", {}), seed_val)
@@ -202,3 +224,63 @@ static func load_from(path := SAVE_PATH):
 	if not c.from_data(d):
 		return null
 	return c
+
+
+# ================================================================= the endless-battle link (Q7)
+## The campaign's six wards are the endless battle's six precincts, in the same
+## order. What the city scene writes (Director.pressure_data: raw per-precinct
+## counts) becomes, here, three weights per ward in 0..1 that Situations.board
+## and .make read: gang (how much ground the crews hold), hot (how loud the
+## precinct has been: incidents, reports, bodies), quiet (how often buildings
+## changed hands back — police pressure working). Normalised against the
+## loudest precinct, so the reading is about *where*, not how long anyone
+## watched; a city nobody has played yields {} and the board is exactly the
+## unlinked one, roll for roll.
+static func pressure_from_city(data: Dictionary) -> Dictionary:
+	var raw: Array = data.get("precincts", [])
+	if int(data.get("version", 0)) != 1 or raw.size() != Situations.WARDS.size():
+		return {}
+	var act_max := 1.0
+	var cap_max := 1.0
+	var dead_max := 1.0
+	for r in raw:
+		act_max = maxf(act_max, float(int(r.get("incidents", 0)) + int(r.get("reports", 0))))
+		cap_max = maxf(cap_max, float(int(r.get("captures", 0))))
+		dead_max = maxf(dead_max, float(int(r.get("deaths", 0))))
+	var wards: Array = []
+	for r2 in raw:
+		var act: float = float(int(r2.get("incidents", 0)) + int(r2.get("reports", 0))) / act_max
+		wards.append({
+			"gang": clampf(float(r2.get("gang", 0.0)) * 2.0, 0.0, 1.0),
+			"hot": clampf(0.6 * act + 0.4 * (float(int(r2.get("deaths", 0))) / dead_max), 0.0, 1.0),
+			"quiet": clampf(float(int(r2.get("captures", 0))) / cap_max, 0.0, 1.0)})
+	return {"wards": wards, "minutes": float(data.get("minutes", 0.0))}
+
+
+static func load_city_pressure(path := PRESSURE_PATH) -> Dictionary:
+	if not read_city_file and path == PRESSURE_PATH:
+		return {}
+	if not FileAccess.file_exists(path):
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return {}
+	var d = JSON.parse_string(f.get_as_text())
+	f.close()
+	return pressure_from_city(d) if d is Dictionary else {}
+
+
+## One readable line for the week-end report and the department log.
+func pressure_summary() -> String:
+	var wards: Array = pressure.get("wards", [])
+	if wards.is_empty():
+		return "no reading from the street"
+	var hot_i := 0
+	var gang_i := 0
+	for i in wards.size():
+		if float(wards[i].get("hot", 0.0)) > float(wards[hot_i].get("hot", 0.0)):
+			hot_i = i
+		if float(wards[i].get("gang", 0.0)) > float(wards[gang_i].get("gang", 0.0)):
+			gang_i = i
+	return "%s is the loudest ward this week; the crews hold most ground in %s (from %d watched minutes of the city)" % [
+		Situations.WARDS[hot_i]["name"], Situations.WARDS[gang_i]["name"], int(pressure.get("minutes", 0.0))]

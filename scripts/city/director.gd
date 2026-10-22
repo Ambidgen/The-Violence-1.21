@@ -59,6 +59,11 @@ var reports: Array = []      # recent reports for the panel [{t, p, kind, inc}]
 var hires: Array = []        # [{t, station, unit_kind}]
 var returning: Array = []    # officers recovering in hospital [{t, op, station}]
 var police_down: Array = []  # downed officers waiting for police paramedics (op ids)
+# per-precinct tallies for the campaign link (playtest pass Q7): the same six
+# precincts are the campaign's six wards, so what the city suffers here is what
+# lands on a chief's board there. Filled by _capture and the report intake;
+# bodies and gang-held ground are counted on demand in pressure_data().
+var precinct_stats: Array = []   # [{incidents, reports, captures}] by precinct
 var stats := {"captures": 0, "expansions": 0, "reports": 0, "incidents": 0, "saved": 0, "evacuated_dead": 0,
 	"hired": 0, "returned": 0, "bled_out": 0}
 var feed: Array = []         # director events for the panel [{t, text, kind}]
@@ -98,6 +103,8 @@ func say(text: String, kind := "city") -> void:
 
 # ================================================================== setup
 func setup() -> void:
+	for p in lv.precincts:   # Q7: zero the campaign-link tallies
+		precinct_stats.append({"incidents": 0, "reports": 0, "captures": 0})
 	for b in lv.bldgs:
 		bstate.append({"owner": -1, "cap_fac": -1, "cap": 0.0, "squads": {}, "hold": _hold_rooms(b), "target_of": -1, "last_cap": -999.0})
 	for gi in GANG_DEFS.size():
@@ -611,6 +618,7 @@ func _capture(bi: int, fi: int) -> void:
 	bs["cap_fac"] = -1
 	bs["last_cap"] = w.t
 	stats["captures"] += 1
+	_pstat(bi, "captures")   # Q7
 	gangs[fi - 1]["captured"] += 1
 	var b: Dictionary = lv.bldgs[bi]
 	say("%s take the %s at %s (%s)%s" % [w.factions[fi]["name"], b["name"].to_lower(), b["address"], lv.hoods[b["hood"]]["name"],
@@ -1091,6 +1099,7 @@ func on_gunshot(src) -> void:
 	if _last_report_p.size() > 40:
 		_last_report_p = _last_report_p.slice(20)
 	stats["reports"] += 1
+	_pstat_at(p, "reports")   # Q7
 	for inc in incidents:
 		if w.t - inc["t"] <= REPORT_WINDOW and p.distance_to(inc["p"]) <= REPORT_RADIUS:
 			inc["dups"] += 1
@@ -1103,6 +1112,7 @@ func on_gunshot(src) -> void:
 	incidents.append(inc2)
 	queue.append(inc2["id"])
 	stats["incidents"] += 1
+	_pstat_at(p, "incidents")   # Q7
 	reports.append({"t": w.t, "p": p, "kind": "original", "inc": inc2["id"]})
 	_trim_reports()
 	say("Shots fired: incident %d, %s" % [inc2["id"], inc2["place"]], "city")
@@ -1958,3 +1968,58 @@ func _retire_bodies() -> void:
 
 func place_name(p: Vector2) -> String:
 	return lv.place_name(p)
+
+
+# ---------------------------------------------------------------- the campaign link (Q7)
+
+## One precinct tally, by building or by map position. Guarded: setup() may be
+## mid-claim, and tests drive pieces of the director without a full city.
+func _pstat(bi: int, key: String) -> void:
+	if precinct_stats.is_empty() or bi < 0 or bi >= lv.bldgs.size():
+		return
+	var pi: int = int((lv.bldgs[bi] as Dictionary).get("precinct", -1))
+	if pi >= 0 and pi < precinct_stats.size():
+		precinct_stats[pi][key] = int(precinct_stats[pi].get(key, 0)) + 1
+
+
+func _pstat_at(pos: Vector2, key: String) -> void:
+	if precinct_stats.is_empty():
+		return
+	var pi: int = lv.precinct_at(pos)
+	if pi >= 0 and pi < precinct_stats.size():
+		precinct_stats[pi][key] = int(precinct_stats[pi].get(key, 0)) + 1
+
+
+## The city's state as the campaign will read it: raw counts per precinct, plus
+## the share of each precinct's buildings a gang currently holds, and the bodies
+## now on its ground. Counts on demand because a precinct that was loud an hour
+## ago and is held now should read as both. city_main writes this to
+## user://city_pressure.json; Campaign.pressure_from_city turns it into weights.
+func pressure_data() -> Dictionary:
+	var deaths: Array = []
+	var held: Array = []
+	var total: Array = []
+	for i in precinct_stats.size():
+		deaths.append(0)
+		held.append(0)
+		total.append(0)
+	for bi in lv.bldgs.size():
+		var pi: int = int((lv.bldgs[bi] as Dictionary).get("precinct", -1))
+		if pi < 0 or pi >= total.size():
+			continue
+		total[pi] += 1
+		if bi < bstate.size() and int((bstate[bi] as Dictionary).get("owner", -1)) >= 1:
+			held[pi] += 1
+	if w != null:
+		for o in w.ops:
+			if o.state == "dead":
+				var pj: int = lv.precinct_at(o.pos)
+				if pj >= 0 and pj < deaths.size():
+					deaths[pj] += 1
+	var out: Array = []
+	for i in precinct_stats.size():
+		var ps: Dictionary = precinct_stats[i]
+		out.append({"incidents": int(ps.get("incidents", 0)), "reports": int(ps.get("reports", 0)),
+			"captures": int(ps.get("captures", 0)), "deaths": int(deaths[i]),
+			"gang": (float(held[i]) / float(maxi(1, int(total[i]))))})
+	return {"version": 1, "minutes": w.t / 60.0 if w != null else 0.0, "precincts": out}

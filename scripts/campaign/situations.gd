@@ -45,13 +45,29 @@ const PRESSURE_NAMES := {"none": "None: you pick the hour", "low": "Low", "high"
 ## election season. Deterministic for the campaign seed and the week.
 ## v0.9: trusts (one per ward, from Politics) replace the wards' starting trust, and
 ## community false (the coalition lost) means no community tips anywhere.
-static func board(seed_val: int, week: int, trusts := [], community := true) -> Array:
+static func board(seed_val: int, week: int, trusts := [], community := true, pressure := {}) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_val * 7919 + week * 104729
 	var types: Array = ["warrant", "gang", "barricade", "hostage"]
 	var picks: Array = []
 	# a warrant and a gang house are common; barricades and hostages less so
 	var weights := {"warrant": 1.0, "gang": 0.9, "barricade": 0.55, "hostage": 0.35}
+	# Q7: the endless battle leans on the mix — crews holding ground mean gang
+	# houses; a loud city means warrants and the odd crisis more often. With no
+	# pressure read, not one roll differs from the unlinked board.
+	var pw: Array = pressure.get("wards", [])
+	if pw.size() == WARDS.size():
+		var g := 0.0
+		var h := 0.0
+		for wd in pw:
+			g += float(wd.get("gang", 0.0))
+			h += float(wd.get("hot", 0.0))
+		g /= pw.size()
+		h /= pw.size()
+		weights["gang"] = float(weights["gang"]) * (1.0 + 1.5 * g)
+		weights["warrant"] = float(weights["warrant"]) * (1.0 + 0.5 * h)
+		weights["barricade"] = float(weights["barricade"]) * (1.0 + 0.4 * h)
+		weights["hostage"] = float(weights["hostage"]) * (1.0 + 0.3 * h)
 	var n := 2 if rng.randf() < 0.45 else 3
 	for k in n:
 		var total := 0.0
@@ -70,12 +86,12 @@ static func board(seed_val: int, week: int, trusts := [], community := true) -> 
 		picks.append("event")
 	var out: Array = []
 	for i in picks.size():
-		out.append(make(picks[i], rng.randi(), week, i, trusts, community))
+		out.append(make(picks[i], rng.randi(), week, i, trusts, community, pressure))
 	return out
 
 
 ## One situation of a type, from a seed.
-static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [], community := true) -> Dictionary:
+static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [], community := true, pressure := {}) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_val
 	var spec: Dictionary = TYPES[type]
@@ -86,11 +102,33 @@ static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [],
 		ward_i = 2
 	elif type == "gang" and rng.randf() < 0.5:
 		ward_i = [3, 5, 1][rng.randi() % 3]
+	# Q7: under a city reading, situations gather where the battle is — gang
+	# houses where crews hold ground, everything else where it has been loud,
+	# less where police pressure is working. Extra rolls happen only here, so
+	# the unlinked draw above is untouched when pressure is empty.
+	var pw: Array = pressure.get("wards", [])
+	if type != "event" and pw.size() == WARDS.size():
+		var total := 0.0
+		var wts: Array = []
+		for i in WARDS.size():
+			var pull: float = float(pw[i].get("gang", 0.0)) if type == "gang" else float(pw[i].get("hot", 0.0))
+			var wt: float = (1.0 + 2.0 * pull) * (1.0 - 0.4 * float(pw[i].get("quiet", 0.0)))
+			wts.append(wt)
+			total += wt
+		var r := rng.randf() * total
+		for i2 in WARDS.size():
+			r -= float(wts[i2])
+			if r <= 0.0:
+				ward_i = i2
+				break
 	var ward: Dictionary = WARDS[ward_i]
 	var vr: Array = spec["vis"]
 	var vis := rng.randi_range(vr[0], vr[1])
 	if ward["isolated"] > 0.6 and type != "event":
 		vis = maxi(1, vis - 1)
+	# Q7: a ward that has been loud in the battle is watched now — cameras out
+	if type != "event" and pw.size() == WARDS.size() and float(pw[ward_i].get("hot", 0.0)) > 0.66:
+		vis = mini(5, vis + 1)
 	var names = Names.new(seed_val)
 	var addr := "%d %s Street" % [rng.randi_range(3, 240), STREETS[rng.randi() % STREETS.size()]]
 	var s := {"id": "W%d-%d" % [week, idx + 1], "week": week, "type": type, "seed": seed_val, "map": mi,
@@ -202,7 +240,8 @@ static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [],
 						"arms": "rifle" if rng.randf() < 0.4 else "pistol", "flight": 0.4, "alert": 0})
 				s["attack_t"] = rng.randi_range(150, s["duration"] - 180)
 			var est := "low (about 1 in %d)" % int(round(1.0 / p))
-			s["intel"].append({"key": "threat", "label": "Threat estimate", "truth": est, "est": est, "known": false, "conf": 0.3, "never": true})
+			s["intel"].append({"key": "threat", "label": "Threat estimate", "truth": est, "est": est, "known": false, "conf": 0.3, "never": true,
+				"level": "low", "odds": int(round(1.0 / p)), "tips": 0})
 			_fact(s, "crowd", "Expected crowd", "%d" % s["crowd"], "%d-%d" % [s["crowd"] - 10, s["crowd"] + 10], 0.5)
 			s["intel"].append({"key": "duration", "label": "Duration", "truth": "15 minutes", "est": "", "known": true, "conf": 1.0})
 	_first_tips(s, rng)
@@ -362,7 +401,11 @@ static func tip(s: Dictionary, rng: RandomNumberGenerator, source: String) -> St
 				th = f2
 		var up: bool = s.get("attack", false) and rng.randf() < 0.65 or (not s.get("attack", false) and rng.randf() < 0.2)
 		var p: float = float(s.get("attack_p", 0.1)) * (1.8 if up else 0.6)
-		th["est"] = "%s (about 1 in %d)" % ["raised" if up else "lowered", maxi(2, int(round(1.0 / clampf(p, 0.02, 0.6))))]
+		th["odds"] = maxi(2, int(round(1.0 / clampf(p, 0.02, 0.6))))
+		th["level"] = "raised" if up else "lowered"
+		th["tips"] = int(th.get("tips", 0)) + 1
+		th["conf"] = minf(0.6, 0.3 + 0.1 * int(th["tips"]))
+		th["est"] = "%s (about 1 in %d)" % [th["level"], int(th["odds"])]
 		var txt := "%s: %s" % [_cap(who), "someone online is talking about the rally in a way that worries people" if up
 			else "nothing unusual heard about the rally"]
 		s["tips"].append(txt)
@@ -382,12 +425,47 @@ static func _cap(t: String) -> String:
 	return t.substr(0, 1).to_upper() + t.substr(1)
 
 
+## A rally's chatter, as a bet the chief can price (Q10): the level, the odds it
+## implies, and how far to trust it. Chatter is a noisy instrument by design — it
+## hears a real attack coming about two times in three, and cries "raised" at
+## about one quiet rally in five (tip(), above) — so the confidence is part of the
+## readout, and each independent tip that moves it firms it a little. The true
+## roll (s["attack"]) is never read here.
+static func chatter(s: Dictionary) -> Dictionary:
+	if s.get("type", "") != "event":
+		return {}
+	var th: Dictionary = {}
+	for f in s.get("intel", []):
+		if f.get("key", "") == "threat":
+			th = f
+	if th.is_empty():
+		return {"level": "no word", "odds": 0, "conf": 30}
+	var level: String = String(th.get("level", ""))
+	if level == "":
+		# a situation saved before the fields existed: read the estimate's words
+		var est: String = String(th.get("est", ""))
+		level = "raised" if est.begins_with("raised") else ("lowered" if est.begins_with("lowered") else "low")
+	var odds: int = int(th.get("odds", 0))
+	if odds <= 0:
+		var est2: String = String(th.get("est", ""))
+		var at: int = est2.find("1 in ")
+		if at >= 0:
+			odds = est2.substr(at + 5).trim_suffix(")").to_int()
+	var conf: int = int(round(float(th.get("conf", 0.3)) * 100.0))
+	return {"level": level, "odds": odds, "conf": conf, "tips": int(th.get("tips", 0))}
+
+
 ## Readable briefing lines: known facts and estimates with their confidence.
 static func briefing_lines(s: Dictionary) -> Array:
 	var out: Array = []
 	for f in s["intel"]:
 		if f["known"]:
 			out.append({"label": f["label"], "text": f["truth"], "known": true})
+		elif f.get("key", "") == "threat":
+			var ch := chatter(s)
+			var what: String = "no word either way" if String(ch["level"]) in ["low", "no word"] else ("chatter %s" % ch["level"])
+			out.append({"label": f["label"], "known": false, "text": "%s — an attack in about 1 in %d events like this (chatter, %d%% confidence: it cries wolf, raised at about one quiet rally in five)" % [
+				what, maxi(2, int(ch["odds"])), int(ch["conf"])]})
 		else:
 			out.append({"label": f["label"], "text": "%s (estimate, %d%% confidence)" % [f["est"], int(f["conf"] * 100.0)], "known": false})
 	return out

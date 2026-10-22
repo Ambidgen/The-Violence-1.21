@@ -2,12 +2,18 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
-## Unreleased: playtest pass (Q1 and Q6)
+## Unreleased: the playtest pass (Q1–Q10)
 
-From the ten-question playtest survey (`PLAYTEST_REPORT.md`). Two systems changed;
-both touch the simulation, so the determinism fixture needs a one-time
-`godot --headless --path . -s res://tests/determinism_test.gd -- --write` on a Godot
-4.4+ machine before the suite is green again.
+From the ten-question playtest survey (`PLAYTEST_REPORT.md`), taken in the
+report's own order: Q1+Q6, then Q2+Q3, then the Q5 measurement matrix, then
+Q4/Q10/Q8/Q9, Q7 last. Q1 and Q6 touch the simulation, and Q4 changes what
+"Suggest a plan" produces for the fixture's first-week operations, so the
+determinism fixture needs a one-time
+`godot --headless --path . -s res://tests/determinism_test.gd -- --write` on a
+Godot 4.4+ machine before the suite is green again; the rest of the pass is
+engine-checked but was written where no Godot binary could run, so the suites
+below want one confirming run each, and the balance table wants its actuals
+filled in from that first run.
 
 - **Stress now has a rally reset.** Stress decayed at 0.1/s only in quiet seconds,
   which in a room-to-room raid was almost never (a near miss, a hit or a sighting
@@ -27,6 +33,97 @@ both touch the simulation, so the determinism fixture needs a one-time
 - **Test:** `tests/orders_test.gd` gains the `less` gate (pre-attack police rounds at
   an armed man who has not raised the weapon, n_min 16). The stress change is covered
   by the existing lethality and habits suites.
+
+- **Hiring is a choice now (Q2).** The blind Recruit/Lateral buttons are gone:
+  each week brings a pool of two to four applicants with their files open —
+  echelon, judgment, temper, integrity, traits and bad habits, expected pay.
+  Pick one and the rest walk; nobody is "the average recruit" any more. The
+  pool is saved; department save version 6 carries it.
+- **Integrity does work (Q3).** Every officer named in a finding gives a
+  statement that can disagree with the bodycam (`(65-integrity)/120`, at most
+  55%), the highest-integrity squadmate standing gives testimony that can firm
+  thin evidence or shake it (video never slips), and being caught out costs 5
+  integrity. The leak after a cleared case is no longer a flat 55%/25%: it
+  scales with the named officer's integrity and statement (x(1.6 - integrity/100),
+  x1.3 if caught, x0.8 if the statement held), and the DA's price for clearing
+  a contradicted statement is the steepest on the table.
+- **The asserted balance matrix (Q5).** `tests/balance_matrix_test.gd`: 5v5
+  assault on hold across all twelve maps, pooled by map family (houses,
+  commercial, multi-room, plaza) at n>=30 with the equipment gate's pooled
+  estimator, equal regulars/police/SOF plus the three cross-echelon pairs, and
+  the SOF-vs-SOF hold-habit regression the survey named (HD16 alone worth
+  11 points, the set cancelling itself, open since v0.8): the matrix asserts
+  neither HD16-alone nor the full set sits more than 10 points of attacker
+  share below no hold habits at all. `scale_playtest.gd --gate` turns its CSV
+  into pooled non-degeneracy asserts. Expected bands; actuals are filled in
+  from the first engine run:
+
+  | cell (5v5 assault, attacker wins) | expected band | actual |
+  |---|---|---|
+  | regulars, houses | 30–50% | pending first run |
+  | regulars, commercial | 25–60% | pending first run |
+  | regulars, multi-room | 20–60% | pending first run |
+  | regulars, plaza | 20–70% | pending first run |
+  | police, houses | 40–70% | pending first run |
+  | police, other families | 30–75% | pending first run |
+  | SOF, all families | 30–70% | pending first run |
+  | SOF attacking regulars (all maps) | >=55% | pending first run |
+  | regulars attacking SOF (all maps) | <=45% | pending first run |
+  | police attacking regulars (all maps) | >=50% | pending first run |
+  | SOF v SOF, HD16-only / all hold habits vs none | no more than 10 pts worse | pending first run |
+
+- **Reading the briefing is worth something, measurably (Q4).** Suggest a
+  plan now consumes only the call type, the geometry, the ranks, a *confirmed*
+  hostage room and the rally chatter; the estimated rooms, the lookout, the
+  door locks, the civilian count and the flight risk are reserved to the
+  human, and it never picks your entry door. The debrief gains YOUR EDITS:
+  per squad, what you changed, closed with what that squad met and whether it
+  broke an order. Settings gains veteran chief: no Suggest button, plans open
+  blank. `op_test.gd --chief=manual` plays matched seeds with an
+  intel-reading scripted chief (far door on a lookout, less-lethal with
+  civilians inside, the estimated Rescue room, no knock on a watched runner)
+  and both runs close with comparable totals — the gap is the measured value
+  of the briefing. Barricade plans also spend the 1 point Weapons tight
+  actually costs since Q6, where they used to hold out for 2.
+- **Training is a pipeline, not twenty clicks (Q9).** Courses queue per
+  officer (up to three) and start themselves the week the officer can take
+  them; the classroom courses — judgment and the use-of-force review — can be
+  taken from a hospital bed, retraining after a finding included, because
+  course and wound now run on separate clocks. A queued course that stops
+  making sense drops unspent. Three or more on the close-quarters refresher
+  together pay three quarters each and come back bonded. The judgment button
+  prices itself ("base misjudge 18% -> 13%"), and every debrief reports the
+  department's training state. `op_test.gd --train` measures courses/officer
+  and residual bad habits over 40 weeks.
+- **The budget can be read forward, and once, raised (Q8).** The account
+  screen shows the next four weeks on today's numbers — allocation, payroll,
+  lawsuits already filed, queued courses as a memo — and calls out the week
+  the account goes red, if it does. Overtime is priced by the commitment:
+  $100 callout plus $15 a commenced minute (a 40-second raid $115 a head,
+  three minutes $145 against the old flat $160), half rate for static
+  post/patrol duty, the $60 night premium untouched. And there is one way to
+  bring money in: a $10,000 city grant while the budget chair's standing is
+  60+, costing 5 of it and an eight-week wait between askings. Still no hard
+  game over: red freezes hire/train/kit, as before.
+- **Rallies are priced bets (Q10).** The threat briefing carries its numbers:
+  chatter level, odds ("about 1 in 6"), and confidence that firms with each
+  tip (30% to 60%), with the cry-wolf rate stated. On lowered chatter the
+  suggestion sends six officers, not ten; static duty bills half overtime
+  (ten quiet minutes $125 a head, not $250). The catastrophic tail is
+  untouched; what changed is that the quiet outcome, the common one, no
+  longer costs like a raid. Compare `op_test.gd` with and without
+  `--no-events` on matched seeds.
+- **The endless battle leans on the board (Q7).** The city's six precincts
+  are the campaign's six wards, and now the one writes to the other:
+  per-precinct incidents, reports, captures, gang-held ground and bodies go
+  to `user://city_pressure.json`; a campaign starting, and every week roll,
+  normalises them to gang/hot/quiet weights that lean on type frequency,
+  ward placement and one point of visibility where it has been loud. The
+  board and the week-end lines say where the city stands. Campaign save
+  version 3 keeps the reading; `tests/city_link_test.gd` gates the mapping,
+  the bias and the iron rule that with no city read, not one roll on the
+  board differs — the determinism fixture explicitly declines to inherit a
+  played machine's city.
 
 ## Unreleased: a debugging pass
 

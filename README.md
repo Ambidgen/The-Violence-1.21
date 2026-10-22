@@ -37,7 +37,7 @@ Saves, the department and settings live in Godot's user folder (`%APPDATA%\Godot
 
 ## Settings and sound
 
-Settings (title screen or pause menu) are kept between sessions: fullscreen, master, effects and ambience volume, red ink (F2), gore (F3), the speed an operation starts at, and the first-weeks tips. Red ink off is the monochrome proof: everything still reads in grey. Gore off removes the stains and keeps the evidence markers. Neither changes the simulation.
+Settings (title screen or pause menu) are kept between sessions: fullscreen, master, effects and ambience volume, red ink (F2), gore (F3), the speed an operation starts at, the first-weeks tips, and veteran chief mode, which removes **Suggest a plan** so every plan is your own. The suggestion never spends an estimate for you in any case: entry doors, the lookout, guessed rooms and civilian counts stay the human's to act on, and the debrief lists what you changed and whether it held. Red ink off is the monochrome proof: everything still reads in grey. Gore off removes the stains and keeps the evidence markers. Neither changes the simulation.
 
 All sound is synthesised. Shots are placed where they were fired; a shot nobody on your side can see plays muffled, as if through walls.
 
@@ -273,6 +273,7 @@ All vehicles drive on rails: the right-hand lane of every street, turning at int
   - Incidents pulse at the report point, and their search buildings are outlined.
 - Speeds run 0.25x to 20x. A big city fight runs at roughly 2-3x real time on a typical desktop, and the panel shows the real rate.
 - `Esc` returns to setup.
+- **The campaign feels it.** The battle's six precincts are the campaign's six wards. The director keeps per-precinct tallies (incidents, reports, building captures, gang-held ground, bodies) and writes them to `user://city_pressure.json`; a campaign starting out, and every week roll, reads them back. Where crews hold ground, gang houses surface more; where a precinct has been loud, the board brings more work and one visibility point more of witnesses; where the battle's police are taking buildings back, less. A city nobody has watched leaves the board exactly as it was.
 
 ## Known limits, and what comes after 1.0
 
@@ -288,7 +289,7 @@ All vehicles drive on rails: the right-hand lane of every street, turning at int
   - Nobody fires from a vehicle.
   - Gang members go everywhere on foot.
   - Away from any possible enemy, people skip perception and think every third tick; standing posts sleep until something comes near.
-- **The city campaign map (v0.10, after 1.0):** operations still happen in the twelve hand-built buildings, not on the city's lots. The Endless Battle has no civilians yet, and its police do not judge or arrest. All three come with the campaign map, which is the next planned update.
+- **The city campaign map (v0.10, after 1.0):** operations still happen in the twelve hand-built buildings, not on the city's lots. The Endless Battle has no civilians yet, and its police do not judge or arrest. All three come with the campaign map, which is the next planned update. The first bridge is built, though: the battle's precinct pressure already shapes the campaign board (above).
 - **Not planned:**
   - fragmentation grenades;
   - multiple floors (the apartment stairs are scenery).
@@ -347,7 +348,7 @@ godot --headless --path . -s res://tests/stall_test.gd                     # six
 godot --headless --path . -s res://tests/determinism_test.gd               # 35 seeded cases against the fixture (--write to reset)
 godot --headless --path . -s res://tests/habits_test.gd -- --strict        # every habit read somewhere, or a declared suspension
 godot --headless --path . -s res://tests/brains_test.gd -- --n=8           # the four brains, squads, pairs, dispersal, cohesion: each on and off
-godot --headless --path . -s res://tests/scale_playtest.gd -- --n=4        # Playtest 02: big fights on every map, CSV
+godot --headless --path . -s res://tests/scale_playtest.gd -- --n=4        # Playtest 02: big fights on every map, CSV (--gate asserts pooled non-degeneracy)
 godot --headless --path . -s res://tests/perf.gd -- --map=10 --t=40        # where the time goes in a 20v20 fight
 godot --headless --path . -s res://tests/fuzz_test.gd -- --n=60            # random maps, sizes, habits, traits, postures
 godot --headless --path . -s res://tests/sim_test.gd -- --n=12             # matchups by echelon (map 00, 2v2)
@@ -361,11 +362,13 @@ xvfb-run godot --path . -s res://tests/rig_gallery.gd -- --out=g.png  # 1.1: eve
 godot --headless --path . -s res://tests/save_test.gd                      # 1.0: safe saves and the .bak fallback
 godot --headless --path . -s res://tests/politics_test.gd                  # v0.9 gate: stories, allies, the DA, the election, saves
 godot --headless --path . -s res://tests/balance_test.gd -- --gate --n=20   # v0.8.5: equal regulars' assault on a held house, 30-50% attacker wins
+godot --headless --path . -s res://tests/balance_matrix_test.gd          # the asserted matrix: 12 maps x echelon pairs, pooled per map family
 godot --headless --path . -s res://tests/lethality_test.gd -- --type=gang  # v0.9.1 diagnostic: how officers fall in planned operations
 godot --headless --path . -s res://tests/duel_probe.gd                     # v0.9.1 diagnostic: how each side falls in an assault
 godot --headless --path . -s res://tests/orders_test.gd -- --n=8           # v0.7 gate: every order, with and without it
 godot --headless --path . -s res://tests/equip_test.gd -- --n=16           # v0.7.5 gate: every item, with and without it
 godot --headless --path . -s res://tests/op_test.gd                        # a campaign played by "Suggest a plan", week by week
+godot --headless --path . -s res://tests/city_link_test.gd                 # Endless Battle tallies -> board weights; no city read, same board
 godot --headless --path . -s res://tests/hold_test.gd -- --n=30            # the hold-mode habits on and off, by matchup
 godot --headless --path . -s res://tests/hold_test.gd -- --ablate=drop --n=30   # all hold habits but one, one at a time
 TR_STEP=1 godot --headless --path . -s res://tests/trace.gd -- --map=4 --a=sof --na=8 --b=militia --nb=8   # step-by-step trace

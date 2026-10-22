@@ -166,6 +166,9 @@ func show_board(lines := []) -> void:
 	var out: int = d.officers.filter(func(r): return r["status"] == "injured").size()
 	var busy: int = c.committed().size()
 	_text(box, "Port Carrick PD: %d officers fit, %d out injured. %d committed this week. Officers sent to one situation, or out canvassing, cannot go to another." % [fit, out, busy], GREY, 11)
+	if not c.pressure.is_empty():
+		# Q7: this board was drawn from the endless battle's city
+		_text(box, "From the street: %s. Watch the endless battle (or let a week pass) and the board follows the city." % c.pressure_summary(), GREY, 10)
 	_dept_strip(box)
 	if bool(Settings.get_v("tips")) and c.week() <= 2:
 		_first_weeks(box)
@@ -384,7 +387,10 @@ const STATUS_WORDS := {"injured": "out injured until week %d", "training": "on a
 
 func _status_of(r: Dictionary, busy: Dictionary) -> String:
 	if STATUS_WORDS.has(r["status"]):
-		return STATUS_WORDS[r["status"]] % int(r["out_until"])
+		var s: String = STATUS_WORDS[r["status"]] % int(r["out_until"])
+		if r["status"] == "injured" and String(r.get("course", "")) != "":
+			s += ", on a classroom course"
+		return s
 	match r["status"]:
 		"dead":
 			return "killed"
@@ -446,24 +452,50 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 	_text(v, "%d good habits%s. Personality: %s. Trauma %.1f. Courses: %s." % [good.size(),
 		", tactical certified" if r.get("tactical", false) else "", String(r["personality"]) if r["personality"] != "" else "none",
 		float(r["trauma"]), ", ".join(r.get("courses", []).map(func(c): return Courses.COURSES[c]["name"])) if not r.get("courses", []).is_empty() else "none"], INK, 11)
-	if r["status"] == "active" and not busy.has(r["id"]):
-		_text(v, "TRAINING (the officer is off the board for the course)", GREY, 10)
+	if r["status"] in ["active", "injured", "training", "academy"]:
+		var cur: String = String(r.get("course", ""))
+		var q: Array = r.get("queue", [])
+		_text(v, "TRAINING%s%s" % [
+			("  ·  on the %s course until week %d" % [Courses.COURSES[cur]["name"].to_lower(), int(r.get("course_until", 0))]) if cur != "" else "",
+			("  ·  queued: " + ", ".join(q.map(func(c): return Courses.COURSES[c]["name"].to_lower()))) if not q.is_empty() else ""], GREY, 10)
+		for qc in q:
+			var hq := _h(v)
+			_lab(hq, "queued: %s" % Courses.COURSES[qc]["name"], GREY, 10)
+			var qid: String = qc
+			_btn(hq, "drop", func(): main.campaign.dept.unqueue(r, qid); main.ops_dept_changed(); _roster())
 		for cid in Courses.COURSE_ORDER:
 			if cid == "uof":
 				continue
 			var c: Dictionary = Courses.COURSES[cid]
+			var classroom: bool = bool(c.get("classroom", false))
+			var can_now: bool = cur == "" and not busy.has(r["id"]) and (r["status"] == "active" or (r["status"] == "injured" and classroom))
 			var why: String = Courses.blocked(r, cid)
-			if why == "" and d.frozen():
-				why = "account in the red"
+			if why == "" and can_now and d.frozen():
+				why = "account in the red (it can still be queued)"
+				can_now = false
 			var h := _h(v)
-			var cb := _btn(h, "%s  $%s  %dw" % [c["name"], Department.money(int(c["cost"])), int(c["weeks"])], func(): _train(r, cid))
-			cb.disabled = why != ""
+			var cb := _btn(h, "%s: %s  $%s  %dw%s" % ["Send" if can_now else "Queue", c["name"], Department.money(int(c["cost"])), int(c["weeks"]),
+				"  (classroom)" if classroom else ""], func(): _train(r, cid))
+			cb.disabled = why != "" and not (why.begins_with("account in the red") and q.size() < Courses.QUEUE_MAX)
+			if q.size() >= Courses.QUEUE_MAX and not can_now:
+				cb.disabled = true
+				why = "queue full"
 			cb.add_theme_font_size_override("font_size", 11)
-			cb.tooltip_text = String(c["desc"]) + (("\nNot now: " + why) if why != "" else "")
-			if why != "":
+			var tip: String = String(c["desc"])
+			if cid == "judgment":
+				tip += "\nAt judgment %d the base chance of misjudging a civilian is %.2f%% per judgment (before stress, night, phones and range); at %d it is %.2f%%." % [
+					int(r["judgment"]), Courses.misjudge_term(int(r["judgment"])) * 100.0,
+					mini(90, int(r["judgment"]) + 6), Courses.misjudge_term(mini(90, int(r["judgment"]) + 6)) * 100.0]
+			if not can_now and why == "":
+				tip += "\nQueued courses start themselves when the officer can take them, and are paid for then."
+			cb.tooltip_text = tip + (("\nNot now: " + why) if why != "" else "")
+			if why != "" and cb.disabled:
 				_lab(h, why, GREY, 10)
-	elif r["status"] == "active":
-		_text(v, "Committed this week: no courses until the week ends.", GREY, 10)
+		if r["status"] == "active" and cur == "" and not busy.has(r["id"]):
+			var hc := _h(v)
+			var coh := _btn(hc, "Refresher with a bonded cohort (3+ at 3/4 cost)", func(): _cohort(r))
+			coh.add_theme_font_size_override("font_size", 11)
+			coh.tooltip_text = "Send this officer and up to three available colleagues he has served with on the close-quarters refresher together: three or more pay three quarters each, and every pair gains a bond (squad cohesion)."
 	var h2 := _h(v)
 	var fb := _btn(h2, "Dismiss ($%s severance)" % Department.money(Courses.pay(r) * Courses.SEVERANCE_WEEKS), func(): _dismiss(r))
 	fb.add_theme_font_size_override("font_size", 11)
@@ -471,15 +503,75 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 
 
 func _train(r: Dictionary, cid: String) -> void:
-	var why: String = main.campaign.dept.enrol(r, cid)
-	flash = ("%s %s is on the %s course." % [r["rank"], r["name"], Courses.COURSES[cid]["name"].to_lower()]) if why == "" else ("Not possible: " + why + ".")
+	var res: Dictionary = main.campaign.dept.enrol_or_queue(r, cid)
+	if bool(res.get("ok", false)):
+		flash = ("%s %s is on the %s course." % [r["rank"], r["name"], Courses.COURSES[cid]["name"].to_lower()]) if res.get("mode", "") == "now" \
+			else ("%s queued for %s %s: it starts when he can take it." % [Courses.COURSES[cid]["name"], r["rank"], r["name"]])
+	else:
+		flash = "Not possible: " + String(res.get("why", "")) + "."
 	main.ops_dept_changed()
 	_roster()
 
 
-func _hire(lateral: bool) -> void:
-	var r: Dictionary = main.campaign.dept.recruit(lateral)
-	flash = ("Hired %s %s." % [r["rank"], r["name"]]) if not r.is_empty() else "Hiring is frozen while the account is in the red."
+## The cohort refresher (Q9): this officer and the available colleagues he is most
+## bonded with, refresher-trained together at the cohort rate.
+func _cohort(r: Dictionary) -> void:
+	var d = main.campaign.dept
+	var busy: Dictionary = main.campaign.committed()
+	var mates: Array = d.officers.filter(func(x): return x["id"] != r["id"] and x["status"] == "active" and String(x.get("course", "")) == "" \
+		and not busy.has(x["id"]) and Courses.blocked(x, "cqb") == "")
+	mates.sort_custom(func(a, b): return d.bond(r["id"], a["id"]) > d.bond(r["id"], b["id"]) if d.bond(r["id"], a["id"]) != d.bond(r["id"], b["id"]) else int(a["xp"]) > int(b["xp"]))
+	var group: Array = [r] + mates.slice(0, 3)
+	var res: Dictionary = d.enrol_cohort(group)
+	if bool(res.get("ok", false)):
+		flash = "Cohort refresher: %s ($%s%s)." % [", ".join(res["started"]), Department.money(int(res["cost"])), ", at the cohort rate" if res["discounted"] else ""]
+	else:
+		flash = "No cohort: " + String(res.get("why", "")) + "."
+	main.ops_dept_changed()
+	_roster()
+
+
+## This week's applicants (Q2): everyone who applied, warts and all — judgment,
+## temper and integrity where the chief can weigh them before anyone is hired.
+func _applicants() -> void:
+	var d = main.campaign.dept
+	var pool: Array = d.applicants_now()
+	_text(box, "APPLICANTS  ·  week %d%s" % [d.week, "  (hiring frozen: the account is in the red)" if d.frozen() else ""], INK, 12)
+	if pool.is_empty():
+		_text(box, "Nobody left to hire this week: the pool was taken from, or walked. A fresh pool applies next week.", GREY, 10)
+		return
+	_text(box, "Hire one and the rest walk. A recruit spends two weeks at the academy; a lateral hire has years elsewhere and reports at once. Whoever nobody hires walks at the end of the week.", GREY, 10)
+	for r in pool:
+		var v := _card(box)
+		var who: String = "%s %s  ·  Patrol  ·  %s" % [r["rank"], r["name"],
+			("lateral, %d years elsewhere, %s" % [int(r.get("years", 0)), Habits.EXP_NAMES[int(r["exp"])]]) if r.get("lateral", false) else "recruit (academy, two weeks)"]
+		_text(v, who, INK, 12).tooltip_text = UI.officer_file(r)
+		var traits: Array = []
+		for tr in r.get("traits", []):
+			traits.append(String(Habits.trait_info(tr).get("name", tr)))
+		var bad: Array = []
+		for b in r.get("bad_traits", []):
+			bad.append(String(Habits.bad_info(b).get("name", b)))
+		var plus: Array = []
+		for q in r["ech"].get("plus", []):
+			plus.append("+" + String(q))
+		for q2 in r["ech"].get("minus", []):
+			plus.append("-" + String(q2))
+		_text(v, "Judgment %d  ·  temper %d  ·  integrity %d%s%s%s" % [int(r["judgment"]), int(r["temper"]), int(r["integrity"]),
+			("  ·  " + ", ".join(traits)) if not traits.is_empty() else "",
+			("  ·  " + "  ".join(plus)) if not plus.is_empty() else "",
+			("  ·  personality: %s (%s)" % [String(r["personality"]).to_lower(), ", ".join(bad)]) if r["personality"] != "" else ""], GREY, 10)
+		var h := _h(v)
+		var rec: Dictionary = r
+		var hb := _btn(h, "Hire  ($%s, then $%s a week)" % [Department.money(Department.applicant_cost(r)), Department.money(Courses.pay(r))],
+			func(): _hire_applicant(rec))
+		hb.disabled = d.frozen()
+		hb.tooltip_text = String(UI.officer_file(r))
+
+
+func _hire_applicant(r: Dictionary) -> void:
+	var got: Dictionary = main.campaign.dept.choose_applicant(r)
+	flash = ("Hired %s %s." % [got["rank"], got["name"]]) if not got.is_empty() else "Hiring is frozen while the account is in the red."
 	main.ops_dept_changed()
 	_roster()
 
@@ -492,14 +584,20 @@ func _dismiss(r: Dictionary) -> void:
 	_roster()
 
 
-## The account: this week and the last few, line by line (v0.8.5).
+## The account: the next four weeks as far as they are knowable, the grant, and
+## this week and the last few, line by line (v0.8.5, Q8).
 func _budget() -> void:
 	mode = "budget"
 	_clear()
 	var d = main.campaign.dept
 	_title("BUDGET  ·  week %d" % d.week)
 	_dept_strip(box)
-	_text(box, "The city's allocation comes in and the payroll goes out at the end of each week. Overtime, restocking, kit, hiring, training, medical bills and death benefits come out as they happen. In the red, hiring, training and new kit are frozen.", GREY, 10)
+	if flash != "":
+		_text(box, flash, INK, 11)
+		flash = ""
+	_text(box, "The city's allocation comes in and the payroll goes out at the end of each week. Overtime (a callout plus time on target; static duty at a rally at half rate), restocking, kit, hiring, training, medical bills and death benefits come out as they happen. In the red, hiring, training and new kit are frozen.", GREY, 10)
+	_forecast()
+	_grant_row()
 	var bb := ""
 	var shown := 0
 	for wk in range(d.week, maxi(0, d.week - 6), -1):
@@ -518,6 +616,57 @@ func _budget() -> void:
 		bb = "Nothing spent yet this campaign."
 	_rich(box, bb)
 	_btn(box, "<  Back to the board", func(): show_board())
+
+
+## Four weeks of the account on today's numbers (Q8): the allocation against
+## today's payroll and the lawsuits already filed, so a freeze that is already
+## on the books arrives announced. Overtime, wounds and settlements nobody has
+## filed yet are not in it, and it says so.
+func _forecast() -> void:
+	var d = main.campaign.dept
+	var v := _card(box)
+	_text(v, "THE NEXT FOUR WEEKS (on today's payroll)", INK, 12)
+	var worst := 0
+	for row in main.campaign.forecast(4):
+		var suits: int = int(row["lawsuits"])
+		var bal: int = int(row["balance"])
+		if bal < 0 and worst == 0:
+			worst = int(row["week"])
+		_text(v, "Week %d:  +$%s allocation  -$%s payroll%s    ->    $%s" % [int(row["week"]),
+			Department.money(int(row["allocation"])), Department.money(int(row["payroll"])),
+			("  -$%s a lawsuit settles" % Department.money(suits)) if suits > 0 else "",
+			Department.money(bal)], Ink.accent(0.9) if bal < 0 else INK, 11)
+	if worst > 0:
+		_text(v, "On these numbers the account is in the red at week %d: hiring, training and new kit freeze there, and the council counts the weeks. Spend less, settle nothing new, or ask the committee (below) before it lands." % worst, Ink.accent(0.9), 10)
+	var qc: int = d.queued_cost()
+	if qc > 0:
+		_text(v, "Not in the table: $%s of queued courses, paid when each starts." % Department.money(qc), GREY, 10)
+	_text(v, "Not knowable, so not in the table: next week's overtime, wounds, and any lawsuit not yet filed.", GREY, 10)
+
+
+## The grant (Q8): the one way to bring money in, while the budget chair is still
+## answering — and asking spends some of that goodwill.
+func _grant_row() -> void:
+	var p = main.campaign.politics
+	var v := _card(box)
+	_text(v, "A CITY GRANT", INK, 12)
+	var why: String = p.can_grant(main.campaign.dept.week)
+	var h := _h(v)
+	var gb := _btn(h, "Apply for a grant ($%s)" % Department.money(Politics.GRANT_AMOUNT), func(): _grant())
+	gb.disabled = why != ""
+	gb.tooltip_text = "One-time money from the budget committee. Needs Marguerite Duff at %d standing or better; asking costs %d of it, and the committee will not be asked again for %d weeks." % [
+		Politics.GRANT_STANDING, Politics.GRANT_FAVOUR, Politics.GRANT_COOLDOWN]
+	if why != "":
+		_lab(h, why, GREY, 10)
+	else:
+		_lab(h, "Duff is at %d: she would sign it." % p.standing("council"), GREY, 10)
+
+
+func _grant() -> void:
+	var res: Dictionary = main.campaign.politics.apply_grant(main.campaign.dept.week, main.campaign.dept)
+	flash = String(res.get("line", ""))
+	main.ops_dept_changed()
+	_budget()
 
 
 ## Internal affairs: every open case and its four answers (v0.8.5).
@@ -542,11 +691,22 @@ func _cases() -> void:
 		_text(v, "Judgment %d  ·  integrity %d  ·  %d earlier case%s" % [int(r.get("judgment", 0)), int(r.get("integrity", 0)),
 			d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size(),
 			"" if d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size() == 1 else "s"], GREY, 10)
+		var stmt: String = String(c.get("statement", ""))
+		if stmt == "disagrees":
+			_text(v, "The officer's statement does not match the %s. Clearing this reads as a cover-up, and it is the kind of detail that leaks." % ("body camera" if c["strength"] == "video" else "witnesses"), Ink.accent(0.9), 10)
+		elif stmt == "matches":
+			_text(v, "The officer's statement matches the record.", GREY, 10)
+		var wit: Dictionary = d.get_officer(String(c.get("witness", "")))
+		var tst: String = String(c.get("testimony", ""))
+		if not wit.is_empty() and tst in ["corroborates", "contradicts"]:
+			_text(v, "%s %s, who was there, %s the record in his statement." % [wit.get("rank", ""), wit.get("name", ""),
+				"corroborates" if tst == "corroborates" else "contradicts"], GREY, 10)
 		var h := _h(v)
 		var cid: String = c["id"]
 		_btn(h, "Clear", func(): _decide(cid, "clear"))
 		var rb := _btn(h, "Review ($%s)" % Department.money(int(Courses.COURSES["uof"]["cost"])), func(): _decide(cid, "retrain"))
-		rb.disabled = r.get("status", "") != "active" or d.frozen() or main.campaign.committed().has(c["officer"])
+		rb.disabled = r.get("status", "") not in ["active", "injured"] or d.frozen() or main.campaign.committed().has(c["officer"])
+		rb.tooltip_text = "A classroom course: a wounded officer can take the review while recovering."
 		_btn(h, "Suspend", func(): _decide(cid, "suspend"))
 		_btn(h, "Dismiss", func(): _decide(cid, "fire"))
 	var closed: Array = d.cases.filter(func(c): return c["status"] == "closed")
@@ -606,7 +766,10 @@ func show_plan() -> void:
 	var n: int = main.campaign.plan_members(s).size()
 	var hb := _h(box)
 	_btn(hb, "<  Board", func(): main.ops_board())
-	_btn(hb, "Suggest a plan", func(): main.ops_suggest())
+	if bool(Settings.get_v("veteran")):
+		_lab(hb, "Veteran chief — the plan is yours.", GREY, 10)   # Q4: no Suggest at this difficulty
+	else:
+		_btn(hb, "Suggest a plan", func(): main.ops_suggest())
 	var run := _btn(box, "RUN   >   %d officer%s" % [n, "" if n == 1 else "s"], func(): main.ops_run())
 	run.custom_minimum_size = Vector2(0, 40)
 	run.add_theme_font_size_override("font_size", 16)
@@ -627,6 +790,10 @@ func _briefing(s: Dictionary) -> void:
 	_text(box, "Visibility %s: %s" % [dots(int(s["visibility"])), ["", "almost nobody is watching; mistakes can stay quiet for months",
 		"a few neighbours", "a street's worth of phones", "reporters likely; anything that happens is seen", "live cameras and a crowd: it will all be seen, at once"][clampi(int(s["visibility"]), 1, 5)]], GREY, 11)
 	_text(box, "Time pressure: %s" % Situations.PRESSURE_NAMES.get(s["pressure"], s["pressure"]), GREY, 11)
+	if s["type"] == "event":
+		var ch: Dictionary = Situations.chatter(s)
+		_text(box, "Sizing the detail: the standing answer is ten officers; on lowered chatter six suffice — Suggest a plan sends %d on this reading (%s, %d%% confidence). Static post and patrol duty bills at half overtime, but fifteen minutes of it is still fifteen minutes: the catastrophic tail is the price of sending six to the wrong rally." % [
+			Autoplan.want_for(s), String(ch.get("level", "no word")), int(ch.get("conf", 30))], GREY, 11)
 	var bb := "[b]WHAT IS KNOWN[/b]\n"
 	for ln in Situations.briefing_lines(s):
 		bb += ("[b]%s:[/b] %s  [i](confirmed)[/i]\n" if ln["known"] else "%s: %s\n") % [ln["label"], String(ln["text"]).replace("[", "(")]
@@ -1371,6 +1538,12 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 			bb += "    %s: %s (%s)\n" % [Orders.OBJECTIVES.get(r["kind"], {}).get("name", r["kind"]), "met" if r["ok"] else "failed", r["why"]]
 		if sq["results"].is_empty():
 			bb += "    objective not resolved when the operation ended\n"
+	# Q4: what you changed from the suggestion, closed with what became of it
+	var diff: Array = res.get("diff", [])
+	if not diff.is_empty():
+		bb += "\n[b]YOUR EDITS[/b]\n"
+		for ln in diff:
+			bb += "    %s\n" % String(ln)
 	bb += "\n[b]TIMELINE[/b]\n"
 	for tl in w.timeline:
 		bb += "%s  %s\n" % [w.clock(tl["t"]), String(tl["text"]).replace("[", "(")]

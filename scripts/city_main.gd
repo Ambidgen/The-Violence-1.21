@@ -21,6 +21,7 @@ const Sound = preload("res://scripts/view/sound.gd")
 const Settings = preload("res://scripts/ui/settings.gd")
 const Overlay = preload("res://scripts/view/overlay.gd")
 const Ledger = preload("res://scripts/view/ledger.gd")
+const Campaign = preload("res://scripts/campaign/campaign.gd")   # Q7: for PRESSURE_PATH only
 const CityUI = preload("res://scripts/ui/city_ui.gd")
 const UI = preload("res://scripts/ui/ui.gd")
 const PX := 40.0
@@ -43,6 +44,7 @@ var actual := 0.0
 var _meas_real := 0.0
 var _meas_sim := 0.0
 var _ui_t := 0.0
+var _pressure_t := -1.0   # Q7: world.t of the last campaign-link write
 var _dyn_t := 0.0
 var _follow_t := 0.0
 var _panning := false
@@ -163,6 +165,7 @@ func _build() -> void:
 	director = Director.new(world, lv, nav, seed_val, {"gang_cap": int(opts.get("gang_cap", 60)), "police_cap": int(opts.get("police_cap", 108))})
 	world.director = director
 	director.setup()
+	_save_pressure()   # Q7: even a fresh battle is a city the campaign can inherit
 	await _stage("Drawing the city", float(steps.size() + 2) / n)
 	_build_views()
 	if _args.has("warp"):
@@ -286,6 +289,9 @@ func focus_selected() -> void:
 func _process(delta: float) -> void:
 	if not ready_to_run:
 		return
+	# Q7: the campaign link — refresh the pressure file every five city minutes
+	if director != null and (world.t - _pressure_t >= 300.0):
+		_save_pressure()
 	var steps := 0
 	if not paused:
 		acc += delta * speed
@@ -423,6 +429,24 @@ func _test_hooks() -> void:
 				img.save_png(_args["shot"])
 				print("city: %s  %d ops  shot saved" % [world.clock(world.t), world.ops.size()])
 				get_tree().quit()
+
+
+## Q7: write the city's pressure where a campaign starting (or rolling a week)
+## will find it. A playing-then-quitting city leaves its last five minutes
+## unwritten; nothing here may stall the simulation, so it stays this small.
+func _save_pressure() -> void:
+	if director == null:
+		return
+	_pressure_t = world.t
+	var f := FileAccess.open(Campaign.PRESSURE_PATH, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(director.pressure_data()))
+		f.close()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save_pressure()
 
 
 # ------------------------------------------------------------------ input

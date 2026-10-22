@@ -139,6 +139,9 @@ func _init() -> void:
 	wa.dispose()
 	wb.dispose()
 	_running_the_department()
+	_applicants_and_statements()
+	_training_queue()
+	_money_by_the_book()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 	print("problems: %d" % problems)
 	quit()
@@ -203,3 +206,119 @@ func _running_the_department() -> void:
 	var d2 = Department.new()
 	d2.from_data(JSON.parse_string(j1))
 	_check(JSON.stringify(d2.to_data()) == j1, "the budget, courses and cases survive a save")
+
+
+## Playtest pass Q2/Q3: the applicant pool and the paper trail.
+func _applicants_and_statements() -> void:
+	print("  -- applicants and statements (Q2, Q3)")
+	var d = Department.new()
+	d.found(99)
+	var pool: Array = d.applicants_now()
+	_check(pool.size() >= 2 and pool.size() <= 4, "a weekly pool of two to four applicants (%d)" % pool.size())
+	var ids := {}
+	for r in pool:
+		ids[r["id"]] = true
+		_check(not d.officers.has(r) and r.has("integrity") and r.has("judgment") and r.has("bad_traits"),
+			"%s is a complete record, not yet an officer" % r["name"])
+	_check(ids.size() == pool.size(), "every applicant distinct")
+	# hiring one spends the right money, sends a rookie to the academy (or a lateral
+	# to duty at once), and the rest walk
+	var pick: Dictionary = pool[0]
+	var n_off: int = d.officers.size()
+	var b0: int = d.balance
+	var cost: int = Department.applicant_cost(pick)
+	var got: Dictionary = d.choose_applicant(pick)
+	_check(got == pick and d.officers.size() == n_off + 1 and d.balance == b0 - cost, "hiring from the pool costs $%s" % Department.money(cost))
+	_check((pick["status"] == "academy" and int(pick["out_until"]) == d.week + Courses.RECRUIT_WEEKS) if not pick["lateral"] else pick["status"] == "active",
+		"a rookie reports after the academy; a lateral hire at once (%s)" % pick["status"])
+	_check(d.applicants_now().is_empty() and String(pick["id"]).begins_with("PC-"), "the rest walked; the chosen one has a badge number id (%s)" % pick["id"])
+	# next week brings a fresh pool, and it survives a save mid-week
+	d.next_week()
+	_check(d.applicants_now().size() >= 2, "next week, a fresh pool (%d)" % d.applicants_now().size())
+	var j := JSON.stringify(d.to_data())
+	var d2 = Department.new()
+	d2.from_data(JSON.parse_string(j))
+	_check(JSON.stringify(d2.to_data()) == j and d2.applicants.size() == d.applicants.size(), "the pool survives a save")
+	# frozen hiring blocks the choice but not the looking
+	d.balance = -500
+	var before: Array = d.applicants_now()
+	_check(not before.is_empty() and d.choose_applicant(before[0]).is_empty(), "in the red the pool still applies, but nobody can be hired")
+	# Q3: the statement and testimony rolls, at their thresholds
+	_check(Department.statement_for(90, "video", 0.0) == "matches", "integrity 90: the statement matches the body camera")
+	_check(Department.statement_for(10, "video", 0.05) == "disagrees", "integrity 10: the statement can simply not match")
+	_check(Department.statement_for(10, "none", 0.0) == "untested", "with nothing to check against, a statement is untested")
+	_check(Department.testimony_for(90, 0.1) == "corroborates" and Department.testimony_for(10, 0.1) == "contradicts",
+		"a squadmate's statement follows their integrity")
+
+
+## Playtest pass Q9: queues, classroom courses in hospital, the cohort refresher.
+func _training_queue() -> void:
+	print("  -- training queue, classroom, cohort (Q9)")
+	var d = Department.new()
+	d.found(123)
+	# a classroom course from a hospital bed, on its own clock
+	var r: Dictionary = d.available()[3]
+	var j0: int = int(r["judgment"])
+	if j0 > 80:
+		r["judgment"] = 60
+		j0 = 60
+	r["status"] = "injured"
+	r["out_until"] = d.week + 3
+	_check(d.enrol(r, "judgment") == "" and r["status"] == "injured" and r["course"] == "judgment", "judgment from a ward bed: still injured, on the course")
+	_check(d.enrol(r, "cqb") != "", "a range course cannot start from the ward (and not mid-course either)")
+	d.next_week()
+	_check(r["status"] == "injured" and int(r["judgment"]) == j0 + 6 and r["course"] == "", "the classroom course finished before the wound (judgment %d -> %d)" % [j0, int(r["judgment"])])
+	d.next_week()
+	d.next_week()
+	_check(r["status"] == "active", "and the wound finished on its own clock")
+	# a queued course starts itself when the current one ends
+	var r2: Dictionary = d.available()[0]
+	_check(d.enrol(r2, "firearms") == "" and r2["status"] == "training", "first course starts")
+	var res: Dictionary = d.enrol_or_queue(r2, "stress")
+	_check(bool(res["ok"]) and res["mode"] == "queued" and r2["queue"] == ["stress"], "the second queues behind it")
+	d.next_week()
+	_check(r2["course"] == "stress" and r2["status"] == "training" and r2["queue"].is_empty(), "and starts itself the week the first ends")
+	d.next_week()
+	_check(r2["status"] == "active" and r2["courses"].has("stress") and r2["courses"].has("firearms"), "both done, in order, hands off")
+	# a queued course that stopped making sense comes off with a reason
+	var r3: Dictionary = d.available()[1]
+	r3["bad_traits"] = ["BH11"]
+	_check(d.queue_course(r3, "coaching") == "" and d.queue_course(r3, "coaching") == "", "coaching can queue twice (two habits, say)")
+	r3["bad_traits"] = []
+	d.next_week()
+	_check(r3["queue"].is_empty() and r3["course"] == "" and r3["status"] == "active" and not r3["courses"].has("coaching"),
+		"both dropped as pointless the week they would have started, unspent")
+	# the cohort refresher: discount and bonds
+	var mates: Array = d.officers.filter(func(x): return x["status"] == "active" and Courses.blocked(x, "cqb") == "")
+	mates = mates.slice(0, 3)
+	_check(mates.size() == 3, "three officers free for a cohort")
+	var b_pair: int = d.bond(mates[0]["id"], mates[1]["id"])
+	var bal: int = d.balance
+	var coh: Dictionary = d.enrol_cohort(mates)
+	var each: int = int(round(int(Courses.COURSES["cqb"]["cost"]) * Courses.COHORT_DISCOUNT))
+	_check(bool(coh["ok"]) and bool(coh["discounted"]) and d.balance == bal - 3 * each, "the cohort pays three quarters each ($%s for three)" % Department.money(3 * each))
+	_check(d.bond(mates[0]["id"], mates[1]["id"]) == b_pair + 1, "and comes back bonded (+1, as from an operation together)")
+	var ts: Dictionary = d.training_state()
+	_check(int(ts["on_course"]) >= 3, "training_state sees them (%d on a course)" % int(ts["on_course"]))
+
+
+## Playtest pass Q8/Q10: overtime by the commitment, and the forecast.
+func _money_by_the_book() -> void:
+	print("  -- overtime and the forecast (Q8, Q10)")
+	_check(Courses.overtime(40.0, false, false) == 115, "a 40-second raid bills $115 a head (callout plus a minute)")
+	_check(Courses.overtime(180.0, false, false) == 145, "three minutes bills $145, against the old flat $160")
+	_check(Courses.overtime(600.0, false, true) == 125, "ten quiet minutes of static duty bill $125 at half rate")
+	_check(Courses.overtime(600.0, false, false) == 250 and Courses.overtime(600.0, true, true) == 185,
+		"the same ten minutes through doors bill $250, and night static $185 (the premium is never halved)")
+	var d = Department.new()
+	d.found(31)
+	var bal0: int = d.balance
+	var swing: int = d.allocation - d.payroll()
+	var rows: Array = d.forecast(4, [{"due": d.week + 1, "kind": "lawsuit", "cost": 40000},
+		{"due": d.week + 2, "kind": "story", "cost": 999999}])
+	_check(rows.size() == 4 and int(rows[0]["balance"]) == bal0 + swing, "week one of the forecast is this week's end ($%s)" % Department.money(int(rows[0]["balance"])))
+	_check(int(rows[1]["lawsuits"]) == 40000 and int(rows[3]["balance"]) == bal0 + 4 * swing - 40000,
+		"the filed lawsuit lands in its week and stays landed; a story costs trust, not money ($%s by week %d)" % [Department.money(int(rows[3]["balance"])), int(rows[3]["week"])])
+	# and the books agree with the forecast's first row when nothing is spent
+	d.next_week()
+	_check(d.balance == bal0 + swing, "an unspent week ends where the forecast said ($%s)" % Department.money(d.balance))

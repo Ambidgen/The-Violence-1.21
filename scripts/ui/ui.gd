@@ -1041,9 +1041,9 @@ static func officer_file(r: Dictionary) -> String:
 	t += "Habits (%d): %s\n" % [r["good"].size(), " ".join(r["good"])]
 	if not r["bad_traits"].is_empty():
 		t += "Trait habits: %s\n" % " ".join(r["bad_traits"])
-	t += "Experience %s (%d xp).  Operations %d, rounds %d, hits %d, down %d, arrests %d, civilians hit %d, wounded %d times.\n" % [
+	t += "Experience %s (%d xp).  Operations %d, rounds %d, hits %d, down %d, arrests %d, civilians hit %d, misjudgements %d, wounded %d times.\n" % [
 		Habits.EXP_NAMES[int(r["exp"])], int(r["xp"]), int(r["ops"]), int(r["shots"]), int(r["hits"]), int(r["kills"]), int(r["arrests"]),
-		int(r["civ_hits"]), int(r["wounded"])]
+		int(r["civ_hits"]), int(r.get("misjudged", 0)), int(r["wounded"])]
 	t += "\nFILE\n"
 	for fe in (r["file"] as Array).slice(maxi(0, r["file"].size() - 14)):
 		t += "wk %d  %s\n" % [int(fe["week"]), fe["text"]]
