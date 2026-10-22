@@ -92,7 +92,7 @@ export const S09_Case = ({caseNo = 'IA 26-114', officer = 'J. OKAFOR', finding =
         </div>
       </At>
 
-      <Slam lines={[String(finding).toUpperCase(), 'BY THE CHIEF']} at={170} x={1020} y={208} rot={-4} size={38} color={tone} vol={0.7} />
+      <Slam lines={[String(finding).toUpperCase(), 'BY THE CHIEF']} at={170} x={1404} y={700} rot={-4} size={38} color={tone} vol={0.7} />
       <Sfx name="door" at={6} volume={0.45} />
       <Sfx name="click" at={32} volume={0.35} />
       {[78, 88, 96, 104, 112].map((at, i) => <Sfx key={i} name="click" at={at} volume={0.28} rate={0.96 + i * 0.02} />)}

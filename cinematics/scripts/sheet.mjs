@@ -27,7 +27,7 @@ for (const s of SHORTS) {
   const composition = await selectComposition({serveUrl, id: s.id, browserExecutable, chromiumOptions});
   const output = path.join(dir, `${s.id}.png`);
   await renderStill({composition, serveUrl, output, frame: s.poster ?? 100, browserExecutable, chromiumOptions, overwrite: true});
-  files.push([output, `${s.id} · ${s.title} · ${(s.frames / 30).toFixed(1)}s`]);
+  files.push([output, `${s.id} · ${(s.frames / 30).toFixed(1)} s`]);
   console.log('still', output);
 }
 
@@ -38,7 +38,7 @@ try {
   const tiles = files.flatMap(([f, label]) => ['-label', label, f]);
   execFileSync('montage', [
     ...tiles, '-tile', '4x', '-geometry', `${opt.scale ? Math.round(960 * Number(opt.scale)) : 960}x+16+16`,
-    '-background', '#EDEDE8', '-fill', '#121212', '-font', font, '-pointsize', '22',
+    '-background', '#EDEDE8', '-fill', '#121212', '-font', font, '-pointsize', '15',
     sheet,
   ], {stdio: 'inherit'});
   console.log('sheet', sheet);
