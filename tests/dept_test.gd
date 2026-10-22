@@ -286,9 +286,8 @@ func _training_queue() -> void:
 	_check(d.queue_course(r3, "coaching") == "" and d.queue_course(r3, "coaching") == "", "coaching can queue twice (two habits, say)")
 	r3["bad_traits"] = []
 	d.next_week()
-	_check(r3["queue"].size() == 1 and r3["course"] == "" and r3["status"] == "active", "the first dropped as pointless; the second starts next week (queue of %d)" % r3["queue"].size())
-	d.next_week()
-	_check(r3["queue"].is_empty() and not r3["courses"].has("coaching"), "and the second dropped too, unspent")
+	_check(r3["queue"].is_empty() and r3["course"] == "" and r3["status"] == "active" and not r3["courses"].has("coaching"),
+		"both dropped as pointless the week they would have started, unspent")
 	# the cohort refresher: discount and bonds
 	var mates: Array = d.officers.filter(func(x): return x["status"] == "active" and Courses.blocked(x, "cqb") == "")
 	mates = mates.slice(0, 3)

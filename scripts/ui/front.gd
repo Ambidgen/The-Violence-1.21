@@ -260,6 +260,7 @@ func show_settings(from: String) -> void:
 	_check(v, "Gore (F3): off keeps the evidence markers", "gore")
 	_check(v, "Tips in the first weeks of a campaign", "tips")
 	_check(v, "The opening cutscenes before a new campaign", "intro")
+	_check(v, "Veteran chief: no Suggest a plan (every plan is yours alone)", "veteran")
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
 	v.add_child(h)

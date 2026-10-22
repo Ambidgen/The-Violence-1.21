@@ -763,7 +763,10 @@ func show_plan() -> void:
 	var n: int = main.campaign.plan_members(s).size()
 	var hb := _h(box)
 	_btn(hb, "<  Board", func(): main.ops_board())
-	_btn(hb, "Suggest a plan", func(): main.ops_suggest())
+	if bool(Settings.get_v("veteran")):
+		_lab(hb, "Veteran chief — the plan is yours.", GREY, 10)   # Q4: no Suggest at this difficulty
+	else:
+		_btn(hb, "Suggest a plan", func(): main.ops_suggest())
 	var run := _btn(box, "RUN   >   %d officer%s" % [n, "" if n == 1 else "s"], func(): main.ops_run())
 	run.custom_minimum_size = Vector2(0, 40)
 	run.add_theme_font_size_override("font_size", 16)
@@ -1532,6 +1535,12 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 			bb += "    %s: %s (%s)\n" % [Orders.OBJECTIVES.get(r["kind"], {}).get("name", r["kind"]), "met" if r["ok"] else "failed", r["why"]]
 		if sq["results"].is_empty():
 			bb += "    objective not resolved when the operation ended\n"
+	# Q4: what you changed from the suggestion, closed with what became of it
+	var diff: Array = res.get("diff", [])
+	if not diff.is_empty():
+		bb += "\n[b]YOUR EDITS[/b]\n"
+		for ln in diff:
+			bb += "    %s\n" % String(ln)
 	bb += "\n[b]TIMELINE[/b]\n"
 	for tl in w.timeline:
 		bb += "%s  %s\n" % [w.clock(tl["t"]), String(tl["text"]).replace("[", "(")]
