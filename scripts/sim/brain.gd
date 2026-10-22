@@ -1914,14 +1914,15 @@ func _rule1(o, e) -> void:
 	w.engage(o, e, _aim_zone(o, e), true)
 
 
-## Less-lethal (v0.8): an unarmed man who has ignored two challenges, and no tool this
-## officer carries is in range now: one officer moves to where one is, walking in for OC
-## spray (3 m) or a baton (arm's reach), stepping back for beanbags (4 m and more), while
-## the others cover. True while moving.
+## Less-lethal (v0.8): an unarmed man who has ignored his challenges (two normally, one
+## under the less-lethal-first order), and no tool this officer carries is in range now:
+## one officer moves to where one is, walking in for OC spray (3 m) or a baton (arm's
+## reach), stepping back for beanbags (4 m and more), while the others cover. True while
+## moving.
 func _close_in(o, e) -> bool:
 	if not o.judges or not e.alive() or e.complying or e.civ or e.shows_weapon() or e.stunned(w.t):
 		return false
-	if int(o.ticker.get("chal_n_" + e.id, 0)) < 2 or o.judged.get(e.id, {}).get("v", "") != "unknown":
+	if int(o.ticker.get("chal_n_" + e.id, 0)) < w.less_challenges_needed(o) or o.judged.get(e.id, {}).get("v", "") != "unknown":
 		return false
 	var d: float = o.pos.distance_to(e.pos)
 	if d > 12.0 or w.less_tool(o, e, d) != "":

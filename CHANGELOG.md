@@ -2,6 +2,32 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased: playtest pass (Q1 and Q6)
+
+From the ten-question playtest survey (`PLAYTEST_REPORT.md`). Two systems changed;
+both touch the simulation, so the determinism fixture needs a one-time
+`godot --headless --path . -s res://tests/determinism_test.gd -- --write` on a Godot
+4.4+ machine before the suite is green again.
+
+- **Stress now has a rally reset.** Stress decayed at 0.1/s only in quiet seconds,
+  which in a room-to-room raid was almost never (a near miss, a hit or a sighting
+  resets the one-second window), so stress habits effectively stayed on for the whole
+  operation. After 12 s with neither a stress event nor an enemy sighting, an element
+  now calms at 0.25/s (`RALLY_DECAY`, `RALLY_QUIET` in `world.gd`); the slow 0.1/s
+  rate and the trauma/morale `stress0` floor are unchanged. Consolidation in a cleared
+  room is now an actual way to settle the squad.
+- **New constraint: Less-lethal first (1 point).** Inside 4 m, a recognized suspect
+  who is neither firing nor pointing a weapon gets one challenge and then OC, a taser
+  or a baton instead of a round. Raising a weapon or opening fire lifts the rule at
+  once; civilians, surrenders and the BH09 startle shot are outside it, so the
+  misjudge and bad-habit paths still do their work. The standing two-challenge rule
+  for less-lethal tools drops to one under this order (`World.less_challenges_needed`).
+- **Weapons tight now costs 1 order point, not 2.** It shares the constraint row with
+  the new order; `Orders.cost` and the planning panel's point math read the same data.
+- **Test:** `tests/orders_test.gd` gains the `less` gate (pre-attack police rounds at
+  an armed man who has not raised the weapon, n_min 16). The stress change is covered
+  by the existing lethality and habits suites.
+
 ## Unreleased: a debugging pass
 
 Every headless suite was run on a clean 4.4.1 build and the game itself was booted through each of its command-line hooks (the title, the test range, the board, the endless city) with no script errors. The simulation is untouched: the determinism fixture still matches all 35 cases to the last decimal, and the balance, stall, fuzz, brains, city and campaign gates all still pass. What the pass turned up:

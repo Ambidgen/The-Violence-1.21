@@ -112,6 +112,15 @@ const BREACH_P := 0.9
 ## Flashbangs: fuse after the throw, radius, stun when facing it / not.
 const BANG_FUSE := 1.2
 const BANG_R := 6.0
+## Stress (v1.2.2): it bleeds off slowly in any quiet second, and an element that has
+## held a quiet, cleared space for RALLY_QUIET seconds calms at the faster rally rate.
+## Neither path ever takes stress below the officer's stress0 floor (trauma, morale).
+const STRESS_DECAY := 0.1
+const RALLY_QUIET := 12.0
+const RALLY_DECAY := 0.25
+## Less-lethal-first order (v1.2.2): inside this range a non-attacking person who is not
+## pointing a weapon gets a challenge and a less-lethal tool, not a round.
+const LESS_FIRST_R := 4.0
 ## Casualties still down when an operation ends (v0.7.5): the chance they die of their
 ## wounds, untreated and treated.
 const DIE_UNTREATED := 0.35
@@ -1294,6 +1303,24 @@ func cleared_to_fire(o, e) -> bool:
 	return not roe_strict
 
 
+## Less-lethal-first order: may this officer not shoot e yet? Inside LESS_FIRST_R the
+## order covers a recognized suspect who is neither firing nor pointing a weapon, so the
+## officer challenges and reaches for OC, a taser or a baton instead. A man attacking, a
+## weapon shown, a civilian (the misjudge path) or anyone beyond the range is untouched.
+func less_first_blocked(o, e) -> bool:
+	if not o.less_first or not o.judges or not e.alive() or e.civ or e.complying:
+		return false
+	if attacking(e, o) or e.shows_weapon():
+		return false
+	return o.pos.distance_to(e.pos) <= LESS_FIRST_R
+
+
+## The challenges an officer must have called before a less-lethal tool comes out:
+## one under the less-lethal-first order, two as the standing rule.
+func less_challenges_needed(o) -> int:
+	return 1 if o.less_first else 2
+
+
 ## "Police! Show me your hands!" Heard by the suspect (who may give up) and by any
 ## civilian close by (who usually complies).
 func _challenge(o, e) -> void:
@@ -1908,7 +1935,7 @@ const LESS_SOUND := {"taser": "taser", "launcher": "launcher", "pepperball": "pe
 func _less_lethal(o, e) -> void:
 	if not o.action.is_empty() or o.stunned(t):
 		return
-	if int(o.ticker.get("chal_n_" + e.id, 0)) < 2 or e.stunned(t):
+	if int(o.ticker.get("chal_n_" + e.id, 0)) < less_challenges_needed(o) or e.stunned(t):
 		return
 	var j: Dictionary = o.judged.get(e.id, {})
 	if j.get("v", "") != "unknown" or e.shows_weapon():
@@ -2265,7 +2292,7 @@ func sigma_shooter(o, settle: float) -> float:
 ## Aim at e, and fire when ready. Under police rules fire waits for the officer's
 ## judgment (force: BH09 fires at half-recognized movement and skips it).
 func engage(o, e, zone: String, fire := true, force := false) -> void:
-	if fire and o.judges and not force and not cleared_to_fire(o, e):
+	if fire and o.judges and not force and (not cleared_to_fire(o, e) or less_first_blocked(o, e)):
 		fire = false
 		if e.alive() and not e.civ and not e.complying:
 			_challenge(o, e)
@@ -3007,8 +3034,11 @@ func _passive(o) -> void:
 				director.on_bled_out(o)
 		return
 	if t - o.last_stress_t > 1.0 and t - o.last_enemy_seen_t > 1.0:
-		# never below the baseline an officer brings in (trauma, fatigue)
-		o.stress = maxf(minf(o.stress, float(o.ech.get("stress0", 0.0))), o.stress - 0.1 * DT)
+		# never below the baseline an officer brings in (trauma, fatigue). A long quiet
+		# spell - an element consolidated in a cleared room - is the rally reset.
+		var rally: bool = t - o.last_stress_t > RALLY_QUIET and t - o.last_enemy_seen_t > RALLY_QUIET
+		var decay: float = RALLY_DECAY if rally else STRESS_DECAY
+		o.stress = maxf(minf(o.stress, float(o.ech.get("stress0", 0.0))), o.stress - decay * DT)
 
 
 func _check_end() -> void:

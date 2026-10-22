@@ -26,15 +26,16 @@ const CONSTRAINTS := {
 	"phase": {"name": "Phase line", "cost": 1, "desc": "Wait at the start until a time, or until another squad has met its first objective."},
 	"entry": {"name": "Entry point", "cost": 1, "desc": "Make the first entry through the door you pick."},
 	"pace": {"name": "Pace", "cost": 1, "desc": "Walk (or creep) only, unless in a fight: slower and quieter."},
-	"tight": {"name": "Weapons tight", "cost": 2, "desc": "Fire only at someone firing or pointing a weapon at police. Armed is not enough."},
+	"tight": {"name": "Weapons tight", "cost": 1, "desc": "Fire only at someone firing or pointing a weapon at police. Armed is not enough."},
 	"knock": {"name": "Knock and announce", "cost": 1, "desc": "Announce at the door and give the occupants ten seconds: suspects get time, civilians get to put their hands up."},
 	"pistols": {"name": "Pistols only", "cost": 1, "desc": "Rifles stay in the car: fewer rounds through walls, less reach."},
+	"less": {"name": "Less-lethal first", "cost": 1, "desc": "Inside 4 m, challenge once and use OC, taser or baton on anyone not firing or pointing a weapon. A weapon raised or a shot fired lifts the rule."},
 }
 
 
 static func empty_orders(kind := "clear") -> Dictionary:
 	return {"objs": [{"kind": kind, "rooms": []}], "avoid": [], "consolidate": "", "phase": {}, "entry": "", "pace": "",
-		"tight": false, "knock": false, "pistols": false}
+		"tight": false, "knock": false, "pistols": false, "less": false}
 
 
 static func rank_i(r: Dictionary) -> int:
@@ -70,10 +71,12 @@ static func cost(od: Dictionary) -> int:
 	if od.get("pace", "") != "":
 		c += 1
 	if od.get("tight", false):
-		c += 2
+		c += 1
 	if od.get("knock", false):
 		c += 1
 	if od.get("pistols", false):
+		c += 1
+	if od.get("less", false):
 		c += 1
 	return c
 
@@ -111,6 +114,8 @@ static func describe(od: Dictionary, lv) -> Array:
 		out.append("Pace: " + String(od["pace"]))
 	if od.get("tight", false):
 		out.append("Weapons tight")
+	if od.get("less", false):
+		out.append("Less-lethal first inside 4 m")
 	if od.get("knock", false):
 		out.append("Knock and announce")
 	if od.get("pistols", false):
