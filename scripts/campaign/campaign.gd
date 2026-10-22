@@ -14,6 +14,7 @@ const Politics = preload("res://scripts/campaign/politics.gd")
 const VERSION := 3        # 2: v0.9, the city's politics; 3: the endless-battle link (Q7)
 const SAVE_PATH := "user://campaign.json"
 const PRESSURE_PATH := "user://city_pressure.json"   # written by the city scene (Q7)
+static var read_city_file := true   # the determinism fixture turns this off: a hashed board may not depend on whether someone watched the city on this machine
 const WEEKS := 40
 
 var seed_val := 1001
@@ -257,6 +258,8 @@ static func pressure_from_city(data: Dictionary) -> Dictionary:
 
 
 static func load_city_pressure(path := PRESSURE_PATH) -> Dictionary:
+	if not read_city_file and path == PRESSURE_PATH:
+		return {}
 	if not FileAccess.file_exists(path):
 		return {}
 	var f := FileAccess.open(path, FileAccess.READ)

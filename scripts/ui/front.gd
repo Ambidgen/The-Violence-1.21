@@ -358,7 +358,9 @@ Force: who goes, in up to five squads of up to six, and what each carries. Kit i
 
 Orders: each squad's objectives (clear, arrest, rescue, contain, post, patrol) and constraints (avoid a room, consolidate, an entry door, a phase line). The number of orders a squad can follow depends on the experience of its leader.
 
-On the map the plan is one clean red line. It will not survive the house. Suggest a plan gives you a sensible start; it will not send fewer than four officers through a door."""],
+On the map the plan is one clean red line. It will not survive the house. Suggest a plan gives you a sensible start; it will not send fewer than four officers through a door. The suggestion never spends an estimate for you: which door, the lookout, the guessed room, how many civilians are inside — those stay yours to act on, and the debrief will show what you changed and whether it held. Settings has a veteran chief mode with no suggestion at all.
+
+At a rally the briefing prices the chatter: how likely an attack is, and how sure the word is. Ten officers is the standing answer; on lowered chatter six suffice, the suggestion sizes itself by the reading, and static duty bills at half overtime. Fifteen quiet minutes is the cheapest night you will ever buy, until it is the wrong rally."""],
 	["The operation", """The operation runs hands-off, as your officers would run it: their habits, their training, their stress and their judgment. Under police rules every person seen is judged before an officer may fire; suspects can give up, and officers cuff them.
 
 You see what your officers see: their view cones, live. Everyone else appears where the radio last called them out.
@@ -366,19 +368,23 @@ You see what your officers see: their view cones, live. Everyone else appears wh
 Space pauses. 1-7 set the speed. The slider rewinds what you have seen; the operation itself never goes back. Abort withdraws every squad: a failure, but a failure with everyone alive always scores better than one with deaths."""],
 	["Afterwards", """The debrief scores the result and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody.
 
-Findings that name an officer open an internal affairs case. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
+Findings that name an officer open an internal affairs case. The officer gives a statement — and what they say may or may not match the bodycam. Integrity is the stat that decides, and being caught disagreeing with the tape costs more of it. The highest-integrity squadmate still standing gives testimony, which can firm up thin evidence or shake it, though video never slips. All of it is written on the case. The same stat prices the leak: clearing a case over video leaks about half the time, more when the named officer's integrity is low or their statement was already caught out, and the district attorney reads those worst of all. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
 
 What civilians suffered at police hands becomes a story: next week if there was video or a crowd, months later if nobody was watching, and sometimes never. Lawsuits settle out of your budget weeks after."""],
-	["The department", """The roster: open an officer's file to send them on a course (close quarters, firearms, judgment, stress, coaching, tactical certification) or to dismiss them. Hire recruits (two weeks at the academy) or experienced officers who report at once.
+	["The department", """The roster: open an officer's file to send them on a course (close quarters, firearms, judgment, stress, coaching, tactical certification) or to dismiss them. Hiring is a weekly pool of two to four applicants with their full files open — training, judgment, temper, integrity, traits, expected pay. Pick one; the rest walk away, and a new pool comes next week. Recruits spend two weeks at the academy; laterals report at once.
 
-The budget: the city's weekly allocation against pay, overtime, kit, training, medical bills and settlements. In the red, hiring, training and new kit freeze, and the council notices.
+Courses can be queued: an officer on a course, or in a hospital bed with a range course in mind, starts the next one the week they can. The classroom courses (judgment, use-of-force review) can be taken from the ward, and an officer retrained after a finding can do it there too. Three or more on the close-quarters refresher together pay three quarters each and come back bonded, as from an operation. A queued course that stops making sense comes off unspent, with a line saying why.
+
+The budget: the city's weekly allocation against pay, overtime, kit, training, medical bills and settlements. Overtime is a callout plus time on target — a forty-second raid is cheap, a ten-minute vigil at a rally is half rate and still not free. The budget screen shows the next four weeks on today's numbers, lawsuits included, and while the budget chair still answers you can apply for a one-time grant; asking spends some of her goodwill, and the committee will not be asked twice in a quarter. In the red, hiring, training and new kit freeze, and the council notices.
 
 Morale falls with deaths, wounds, dismissals and deficits. Low morale puts more stress into every operation; very low morale costs you officers."""],
 	["The city", """City Hall shows the polls, the four allies and the trust of each ward.
 
 Each ally holds something: the budget chair the allocation, the union president the officers' goodwill, the community coalition the tips, the district attorney the benefit of the doubt. Lose one below 25 and what they hold goes with them; win them back above 40.
 
-Royce Kettering gains from failure and fear. Dana Okonjo-Vale gains from every story of police harm, and wants you gone. Gordon Pell gains from quiet competence and balanced books. At the end of week 40 the city votes."""],
+Royce Kettering gains from failure and fear. Dana Okonjo-Vale gains from every story of police harm, and wants you gone. Gordon Pell gains from quiet competence and balanced books. At the end of week 40 the city votes.
+
+And the city itself leans on your board. The six wards are the Endless Battle's six precincts: where the crews hold ground there, gang houses surface here; where a precinct has been loud, more work and more witnesses; where the battle's police are taking buildings back, less. Watch the battle, then start (or roll) a week, and the board follows the street."""],
 	["Controls", """Mouse wheel zooms; middle or right drag pans; Home refits the view.
 Space pauses an operation; 1-7 set its speed.
 F2 switches red ink off (the monochrome proof); F3 switches gore off. Neither touches the simulation.
