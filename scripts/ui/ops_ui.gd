@@ -166,6 +166,9 @@ func show_board(lines := []) -> void:
 	var out: int = d.officers.filter(func(r): return r["status"] == "injured").size()
 	var busy: int = c.committed().size()
 	_text(box, "Port Carrick PD: %d officers fit, %d out injured. %d committed this week. Officers sent to one situation, or out canvassing, cannot go to another." % [fit, out, busy], GREY, 11)
+	if not c.pressure.is_empty():
+		# Q7: this board was drawn from the endless battle's city
+		_text(box, "From the street: %s. Watch the endless battle (or let a week pass) and the board follows the city." % c.pressure_summary(), GREY, 10)
 	_dept_strip(box)
 	if bool(Settings.get_v("tips")) and c.week() <= 2:
 		_first_weeks(box)

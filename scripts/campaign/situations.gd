@@ -45,13 +45,29 @@ const PRESSURE_NAMES := {"none": "None: you pick the hour", "low": "Low", "high"
 ## election season. Deterministic for the campaign seed and the week.
 ## v0.9: trusts (one per ward, from Politics) replace the wards' starting trust, and
 ## community false (the coalition lost) means no community tips anywhere.
-static func board(seed_val: int, week: int, trusts := [], community := true) -> Array:
+static func board(seed_val: int, week: int, trusts := [], community := true, pressure := {}) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_val * 7919 + week * 104729
 	var types: Array = ["warrant", "gang", "barricade", "hostage"]
 	var picks: Array = []
 	# a warrant and a gang house are common; barricades and hostages less so
 	var weights := {"warrant": 1.0, "gang": 0.9, "barricade": 0.55, "hostage": 0.35}
+	# Q7: the endless battle leans on the mix — crews holding ground mean gang
+	# houses; a loud city means warrants and the odd crisis more often. With no
+	# pressure read, not one roll differs from the unlinked board.
+	var pw: Array = pressure.get("wards", [])
+	if pw.size() == WARDS.size():
+		var g := 0.0
+		var h := 0.0
+		for wd in pw:
+			g += float(wd.get("gang", 0.0))
+			h += float(wd.get("hot", 0.0))
+		g /= pw.size()
+		h /= pw.size()
+		weights["gang"] = float(weights["gang"]) * (1.0 + 1.5 * g)
+		weights["warrant"] = float(weights["warrant"]) * (1.0 + 0.5 * h)
+		weights["barricade"] = float(weights["barricade"]) * (1.0 + 0.4 * h)
+		weights["hostage"] = float(weights["hostage"]) * (1.0 + 0.3 * h)
 	var n := 2 if rng.randf() < 0.45 else 3
 	for k in n:
 		var total := 0.0
@@ -70,12 +86,12 @@ static func board(seed_val: int, week: int, trusts := [], community := true) -> 
 		picks.append("event")
 	var out: Array = []
 	for i in picks.size():
-		out.append(make(picks[i], rng.randi(), week, i, trusts, community))
+		out.append(make(picks[i], rng.randi(), week, i, trusts, community, pressure))
 	return out
 
 
 ## One situation of a type, from a seed.
-static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [], community := true) -> Dictionary:
+static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [], community := true, pressure := {}) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_val
 	var spec: Dictionary = TYPES[type]
@@ -86,11 +102,33 @@ static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [],
 		ward_i = 2
 	elif type == "gang" and rng.randf() < 0.5:
 		ward_i = [3, 5, 1][rng.randi() % 3]
+	# Q7: under a city reading, situations gather where the battle is — gang
+	# houses where crews hold ground, everything else where it has been loud,
+	# less where police pressure is working. Extra rolls happen only here, so
+	# the unlinked draw above is untouched when pressure is empty.
+	var pw: Array = pressure.get("wards", [])
+	if type != "event" and pw.size() == WARDS.size():
+		var total := 0.0
+		var wts: Array = []
+		for i in WARDS.size():
+			var pull: float = float(pw[i].get("gang", 0.0)) if type == "gang" else float(pw[i].get("hot", 0.0))
+			var wt: float = (1.0 + 2.0 * pull) * (1.0 - 0.4 * float(pw[i].get("quiet", 0.0)))
+			wts.append(wt)
+			total += wt
+		var r := rng.randf() * total
+		for i2 in WARDS.size():
+			r -= float(wts[i2])
+			if r <= 0.0:
+				ward_i = i2
+				break
 	var ward: Dictionary = WARDS[ward_i]
 	var vr: Array = spec["vis"]
 	var vis := rng.randi_range(vr[0], vr[1])
 	if ward["isolated"] > 0.6 and type != "event":
 		vis = maxi(1, vis - 1)
+	# Q7: a ward that has been loud in the battle is watched now — cameras out
+	if type != "event" and pw.size() == WARDS.size() and float(pw[ward_i].get("hot", 0.0)) > 0.66:
+		vis = mini(5, vis + 1)
 	var names = Names.new(seed_val)
 	var addr := "%d %s Street" % [rng.randi_range(3, 240), STREETS[rng.randi() % STREETS.size()]]
 	var s := {"id": "W%d-%d" % [week, idx + 1], "week": week, "type": type, "seed": seed_val, "map": mi,
