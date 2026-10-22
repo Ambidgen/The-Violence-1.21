@@ -2,6 +2,55 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased: the short cutscenes
+
+Fourteen in-game interstitials, 5-10 s each, in the same Remotion project as the opening
+(`cinematics/`). They are drawn on the same page — paper, ink, stepped greys, one red that
+only marks where a plan touched a real room — and they exist for the beats that used to be
+a cut between panels:
+
+| id | length | beat |
+|----|--------|------|
+| `S01-Week` | 6 s | a week starts: the numeral, the calendar, this week's slips dealt out |
+| `S02-Situation` | 7 s | a situation picked off the board: the file, its visibility, its pressure |
+| `S03-Plan` | 8 s | the plan signed: the route in red, the squads on it, the rail of numbers |
+| `S04-Staging` | 7 s | RUN: two vans, a wet street from above, the squad on the wall, GO |
+| `S05-Threshold` | 7 s | the first door: the cone, the recognition bar, `clear` or `contact` |
+| `S06-OfficerDown` | 8 s | an officer downed: the room stops, the radio tries, the notice |
+| `S07-Debrief` | 7 s | the fog lifts: the route as drawn, then as it went, markers and counters |
+| `S08-Press` | 8 s | the Ledger lands, sets its headline, and a `bad` week gets the red rule |
+| `S09-Case` | 8 s | internal affairs: the exhibit, the redactions, `CLEARED` / `SUSTAINED` |
+| `S10-Ally` | 7 s | one ally's standing walks to the red line at 25, and holds or goes |
+| `S11-Election` | 10 s | election night: three bars, six wards reporting, the name |
+| `S12-EndOfWatch` | 8 s | a killed officer: badge, folded flag, one bell, one red rule |
+| `S13-Allocation` | 6 s | the council's money counted onto the ledger, `APPROVED` / `CUT` |
+| `S14-Course` | 6 s | a course ends: the certificate, the ticks, what actually changed |
+
+- **Props, not scripts, and slots.** Each short is a pure function of its props, kept in
+  `cinematics/src/shorts/registry.js` with types, defaults and docs; `npm run manifest`
+  writes `shorts.json` (also into `assets/cutscenes/shorts/` for the engine) and
+  `cinematics/SHORTS.md`. Where a short leaves a plate empty on purpose — a name, a badge,
+  a ward, a headline — the registry publishes it as a **slot**, so one video serves every
+  campaign event without a re-render: `play_short("s06_officer_down", {"name": ...,
+  "badge": ...})`.
+- **Two files already carry a variant** rather than a second composition: `S05-Threshold`
+  is `clear` or `contact`, `S06-OfficerDown` is `down` or `killed`, and both are separate
+  renders because the picture changes, not only the words.
+- **In the game:** `scripts/ui/shorts.gd` (a `CanvasLayer` beside the opening's
+  `cutscene.gd`) reads the manifest, plays the Theora, paints slot text scaled to the
+  panel, and skips on Space/Enter/click; it never blocks and always calls back, including
+  when the file is missing. `main.play_short(key, text, after)` is the one call site shape,
+  it honours the existing **opening cutscenes** setting, and `--short=s01_week
+  [--short-shot=path --short-at=frames]` plays one from the command line for a recording.
+- **Pipeline:** `npm run shorts` renders to `out/shorts/*.mp4` (1920x1080, 30 fps, h264 +
+  aac); `sh scripts/to_game-shorts.sh` loudness-normalises and writes 1280x720 Ogg Theora
+  into `assets/cutscenes/shorts/`. That step needs an ffmpeg with libtheora and libvorbis
+  (the compositor's own ffmpeg has neither), so the script takes `FFMPEG=/path/to/ffmpeg`.
+- **Nothing in the campaign calls them yet.** The call sites are picked and named in
+  `cinematics/SHORTS.md` (`trigger`), and the beats they belong to are the ones the panels
+  already report; wiring each one is a `play_short(...)` in the beat's handler, not a new
+  screen.
+
 ## Unreleased: the playtest pass (Q1–Q10)
 
 From the ten-question playtest survey (`PLAYTEST_REPORT.md`), taken in the

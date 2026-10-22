@@ -1,12 +1,17 @@
 {
   "name": "the-violence-cinematics",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "The Violence: the opening cutscenes, made with Remotion.",
+  "description": "The Violence: the opening cutscenes and the short in-game interstitials, made with Remotion.",
   "scripts": {
     "studio": "remotion studio src/index.jsx",
-    "render": "node scripts/render.mjs"
+    "render": "node scripts/render.mjs",
+    "shorts": "node scripts/render-shorts.mjs",
+    "manifest": "node scripts/manifest.mjs",
+    "to-game": "sh scripts/to_game.sh && sh scripts/to_game-shorts.sh",
+    "check": "node scripts/manifest.mjs && node -e \"import('./src/shorts/registry.js').then(m=>{if(m.SHORTS.length<1)process.exit(1);console.log(m.SHORTS.length+' shorts ok')})\"",
+    "sheet": "node scripts/sheet.mjs"
   },
   "dependencies": {
     "@fontsource/courier-prime": "^5.2.8",

@@ -35,6 +35,44 @@ Saves, the department and settings live in Godot's user folder (`%APPDATA%\Godot
 
 **How to play** on the title screen (or in the pause menu) covers all of it in eight short pages.
 
+## The short cutscenes
+
+Between the four opening scenes the campaign has fourteen short interstitials, five to
+ten seconds each, made in the same Remotion project and drawn on the same page. They are
+there for the beats that used to be a cut: a week starting, a situation picked off the
+board, the plan signed, staging in the street, the first door, an officer down, the
+debrief, the front page, a case, an ally crossing 25, election night, end of watch, the
+allocation, a course ending.
+
+| id | Scene | Length | Fires on |
+|----|-------|--------|----------|
+| `S01-Week` | The Board Refills | 6 s | a week starts |
+| `S02-Situation` | The File | 7 s | a situation is selected |
+| `S03-Plan` | The Plan | 8 s | squads set, before RUN |
+| `S04-Staging` | Staging | 7 s | RUN is pressed |
+| `S05-Threshold` | The Threshold | 7 s | first door / first contact |
+| `S06-OfficerDown` | Officer Down | 8 s | an officer is downed |
+| `S07-Debrief` | The Fog Lifts | 7 s | an operation ends |
+| `S08-Press` | The Front Page | 8 s | the press writes |
+| `S09-Case` | The Case | 8 s | a case opens or closes |
+| `S10-Ally` | The Standing | 7 s | an ally crosses 25 |
+| `S11-Election` | Election Night | 10 s | week 40 |
+| `S12-EndOfWatch` | End of Watch | 8 s | an officer is killed |
+| `S13-Allocation` | The Allocation | 6 s | the budget committee rules |
+| `S14-Course` | The Course | 6 s | a course ends |
+
+They are props, not scripts: the plates are drawn, the words come from the campaign, and
+each short publishes **slots** — an empty plate the engine may write into at play time (a
+name, a badge, a ward, a headline) without re-rendering the video. Some carry a variant in
+their props: the threshold is `clear` or `contact`, the officer is `down` or `killed`, the
+press is ink or `red`. Space, Enter or a click skips one; they honour the same **opening
+cutscenes** setting as the intro.
+
+`cinematics/SHORTS.md` is the generated catalogue: every prop, its type, its default and
+every slot. `scripts/ui/shorts.gd` plays them and paints the slots, `main.play_short(key,
+text, after)` calls one from anywhere in the campaign, and `--short=s01_week` plays one
+from the command line for a recording.
+
 ## Settings and sound
 
 Settings (title screen or pause menu) are kept between sessions: fullscreen, master, effects and ambience volume, red ink (F2), gore (F3), the speed an operation starts at, the first-weeks tips, and veteran chief mode, which removes **Suggest a plan** so every plan is your own. The suggestion never spends an estimate for you in any case: entry doors, the lookout, guessed rooms and civilian counts stay the human's to act on, and the debrief lists what you changed and whether it held. Red ink off is the monochrome proof: everything still reads in grey. Gore off removes the stains and keeps the evidence markers. Neither changes the simulation.
@@ -332,7 +370,9 @@ scripts/ui/front.gd       the title screen, pause menu, settings, manual and cre
 scripts/ui/settings.gd    the player's settings, saved in user://settings.cfg (1.0)
 scripts/view/sound.gd     sound: effects from the simulation's events, the interface, ambience (1.0)
 scripts/ui/cutscene.gd    the opening's player (1.2)
-cinematics/               the opening cutscenes' Remotion project (see cinematics/README.md); assets/cutscenes holds the videos
+scripts/ui/shorts.gd      the short interstitials' player: the manifest, the slots and the skip (1.2)
+cinematics/               the Remotion project for the opening and the shorts (see cinematics/README.md);
+                          assets/cutscenes holds the videos, assets/cutscenes/shorts the fourteen shorts and their manifest
 scripts/view/rig.gd       the animated figure: gait, hands, actions, recoil, hits and falls (1.1)
 scripts/campaign/save_file.gd  safe saves: temporary file, check, swap, .bak fallback (1.0)
 assets/sfx/               all sounds, synthesised by tools/make_sounds.py (1.0)
