@@ -15,6 +15,7 @@ const PlanWalls = preload("res://scripts/view/plan_walls.gd")
 const ActualRoute = preload("res://scripts/view/actual_route.gd")
 const Ink = preload("res://scripts/view/ink.gd")
 const Cutscene = preload("res://scripts/ui/cutscene.gd")
+const Shorts = preload("res://scripts/ui/shorts.gd")
 const Front = preload("res://scripts/ui/front.gd")
 const Settings = preload("res://scripts/ui/settings.gd")
 const Decals = preload("res://scripts/view/decals.gd")
@@ -231,6 +232,8 @@ func _ready() -> void:
 		_ops_hooks.call_deferred()
 	cutscene = Cutscene.new()
 	add_child(cutscene)
+	shorts = Shorts.new()
+	add_child(shorts)
 	front = Front.new()
 	add_child(front)
 	front.build(self)
@@ -1145,6 +1148,7 @@ func set_overlay(nm: String, on: bool) -> void:
 
 # ------------------------------------------------------------------ loop
 var cutscene                     # the opening (1.2)
+var shorts                       # the short interstitials
 var _after_opening: Callable
 
 
@@ -1163,6 +1167,19 @@ func _opening_done() -> void:
 		_after_opening.call()
 
 
+## A short interstitial, then `after`: five to ten seconds on one beat. `text`
+## fills whatever slots the short publishes (a name, a ward, a headline); with none, the
+## short plays on its drawn-in defaults. Honours the same "intro" setting as the opening
+## and never blocks: if the video is not shipped, `after` runs at once.
+func play_short(key: String, text := {}, after := Callable()) -> bool:
+	if not bool(Settings.get_v("intro")) or shorts == null or not shorts.available(key):
+		if after.is_valid():
+			after.call()
+		return false
+	sound.ambience("")
+	return shorts.play(key, text, after)
+
+
 var _perf := {"frames": 0, "sim": 0, "view": 0, "steps": 0, "draws": 0}
 var _pf0 := 0
 var _sim_us := 0
@@ -1171,7 +1188,7 @@ var _sim_us := 0
 func _process(delta: float) -> void:
 	_pf0 = Time.get_ticks_usec()
 	_sim_us = 0
-	sound.ambience("" if cutscene.visible else ("amb_city" if mode == "run" and not replay_on else "amb_office"))
+	sound.ambience("" if (cutscene.visible or (shorts != null and shorts.visible)) else ("amb_city" if mode == "run" and not replay_on else "amb_office"))
 	if replay_on and world != null:
 		if replay_play:
 			replay_t = minf(replay_t + delta * replay_speed, world.t)
@@ -1408,6 +1425,14 @@ func _test_hooks() -> void:
 			play_opening(func(): get_tree().quit(), [] if _args["cutscene"] == "all" else [_args["cutscene"]])
 		if _args.has("cutscene-shot") and Engine.get_process_frames() == int(_args.get("cutscene-at", "120")):
 			_shot(_args["cutscene-shot"])
+			get_tree().quit()
+	if _args.has("short"):           # --short=s01_week plays one interstitial, then quits
+		if Engine.get_process_frames() == 6:
+			var played: bool = play_short(_args["short"], {}, func(): get_tree().quit())
+			if not played:
+				get_tree().quit()
+		if _args.has("short-shot") and Engine.get_process_frames() == int(_args.get("short-at", "120")):
+			_shot(_args["short-shot"])
 			get_tree().quit()
 	if _args.has("hold") and Engine.get_process_frames() >= int(_args["hold"]):
 		get_tree().quit()      # recordings (1.1): hold a screen for N frames, then stop
