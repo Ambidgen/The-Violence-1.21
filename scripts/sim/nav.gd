@@ -131,19 +131,19 @@ func _build_layers() -> void:
 					w_door[y * nx + x] = 7.0
 	# PF02: exposure from each opening's viewpoints, on a 0.5 m coarse grid within 14 m
 	var step := 2 if lv_area() <= 1200.0 else 4
-	var reach := 14.0
+	var reach_m := 14.0
 	for o in level.openings:
 		for vp in o["vps"]:
 			if geom.blocked_disc(vp, 0.05):
 				continue
-			var y0 := maxi(0, int((vp.y - reach) / CS) / step * step)
-			var x0 := maxi(0, int((vp.x - reach) / CS) / step * step)
-			var y1 := mini(ny, int((vp.y + reach) / CS) + 1)
-			var x1 := mini(nx, int((vp.x + reach) / CS) + 1)
+			var y0 := maxi(0, int((vp.y - reach_m) / CS) / step * step)
+			var x0 := maxi(0, int((vp.x - reach_m) / CS) / step * step)
+			var y1 := mini(ny, int((vp.y + reach_m) / CS) + 1)
+			var x1 := mini(nx, int((vp.x + reach_m) / CS) + 1)
 			for y in range(y0, y1, step):
 				for x in range(x0, x1, step):
 					var p := cell_centre(Vector2i(x, y)) + Vector2(CS, CS) * 0.5 * (step - 1)
-					if p.distance_to(vp) > reach:
+					if p.distance_to(vp) > reach_m:
 						continue
 					if not geom.sight_clear(vp, 1.65, p, 1.3):
 						continue

@@ -2,6 +2,14 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased: a debugging pass
+
+Every headless suite was run on a clean 4.4.1 build and the game itself was booted through each of its command-line hooks (the title, the test range, the board, the endless city) with no script errors. The simulation is untouched: the determinism fixture still matches all 35 cases to the last decimal, and the balance, stall, fuzz, brains, city and campaign gates all still pass. What the pass turned up:
+
+- **The weapon light's equipment gate was noise, not a measurement.** `--only=light` failed at the README's own sample sizes and passed at others: an operation records only some ten night recognitions, so a mean of the per-run means swung across the 0.05 s margin from seed to seed. The gate now pools the recognition seconds against the number of recognitions over four times the seeds (the same pooled estimator the heavy pistol and battle rifle use), and its margin is what the design can reach: the light only helps inside its 30 deg, 25 m beam, which is about half the recognitions, so a squad's mean falls by 0.05-0.08 s rather than by the whole 1.25x night penalty. Measured 0.48 against 0.52 at `--n=8`, 0.49 against 0.54 at `--n=12` and 0.48 against 0.54 at `--n=16`; a light that does nothing measures 0.55 against 0.52, still a FAIL. Daylight shows no difference either way, as it should.
+- **Four locals no longer shadow the state they sit next to.** `_director()` in main.gd kept the camera command in a local `mode`, one name away from the game's own `mode` ("setup", "run"); the PF02 exposure pass in nav.gd used a local `reach` beside the class's `reach` byte array of cells in the connected region. Both are renamed (`cam_mode`, `reach_m`). The city director loses two locals nothing read, one of which (`lv.bldgs[bi]`) was the only thing a reader had to explain why `_send_squad` never used the building it looked up.
+- **Twelve maps, not eleven.** The README (four places) and the project description still said eleven; the table beside them lists map 11, Civic Plaza, and the registry ships twelve.
+
 ## v1.2.0: the opening
 
 - **Four opening cutscenes**, made with Remotion (cinematics/), drawn in the red-ink hand and scored with the game's own sounds: *Port Carrick* (the city, the closing mill, the wards and crews, gunfire on the map, headquarters), *The Outgoing Chief* (the desk, his note, what you inherit, the phone), *The Plan* (a briefing drawn with total confidence, then the same house when the plan meets the room) and *Forty Weeks* (the calendar, the candidates, the allies, the first front page, the title). About two and a half minutes in all.

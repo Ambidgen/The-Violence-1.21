@@ -1250,12 +1250,12 @@ func _director(delta: float) -> void:
 				n.visible = false
 	var zf := float(_args.get("camzoom", "2.0"))
 	var pts: Array = []
-	var mode: String = _args["cam"]
-	if mode.begins_with("follow:"):
-		var o = world.by_id.get(mode.substr(7), null)
+	var cam_mode: String = _args["cam"]
+	if cam_mode.begins_with("follow:"):
+		var o = world.by_id.get(cam_mode.substr(7), null)
 		if o != null:
 			pts.append(o.pos)
-	elif mode == "team":       # team A (the police), and anyone shooting near them
+	elif cam_mode == "team":       # team A (the police), and anyone shooting near them
 		var c0 := Vector2.ZERO
 		var n0 := 0
 		for o in world.ops:
