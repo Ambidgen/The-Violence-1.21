@@ -772,7 +772,6 @@ func _send_squad(fi: int, ms: Array, bi: int, room: String, into: int) -> void:
 	if ms.is_empty():
 		return
 	var g: Dictionary = gangs[fi - 1]
-	var b: Dictionary = lv.bldgs[bi]
 	var ti := _unit(fi, "push", "%s push" % g["tag"], "transit", {"dest_bldg": bi, "dest_room": room, "join": into})
 	for m in ms:
 		_transfer(m, ti)
@@ -968,7 +967,6 @@ func _alive_el(el: Dictionary) -> Array:
 
 ## The assault team now holds the building: they become its garrison, one squad per room.
 func _settle_assault(g: Dictionary, ti: int, bi: int) -> void:
-	var tm: Dictionary = w.teams[ti]
 	var al := _alive_members(ti)
 	g["expansion"] = -1
 	bstate[bi]["target_of"] = -1

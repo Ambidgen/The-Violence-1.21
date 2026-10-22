@@ -9,7 +9,7 @@ Between operations you run the department: pay, hiring and firing, kit, training
 Every building is drawn as an architectural floor plan in greyscale. Red is the only colour, and it marks only where the plan touched a real room.
 
 Two more ways to play sit on the title screen:
-- **Test range:** eleven maps and two teams of one to thirty operators each. Set every operator's echelon, habits, traits and kit, place them, and watch the fight resolve itself at up to 20x.
+- **Test range:** twelve maps and two teams of one to thirty operators each. Set every operator's echelon, habits, traits and kit, place them, and watch the fight resolve itself at up to 20x.
 - **Endless battle:** Port Carrick itself, a 1 km city of about 250 lots. Four gangs fight over its buildings, six police precincts answer the gunfire, and three hospitals send out ambulances. It never ends.
 
 ## Run it
@@ -196,7 +196,7 @@ A team forms squads by the rules of v0.7.9 (see that section): 6 = 3+3, 7 = 4+3,
 **The city.** A grid of 30 blocks between 18 m streets, about 1,026 x 608 m.
 - Each block holds two rows of lots, back to back.
 - Every lot is a full floor plan:
-  - the eleven maps, turned to face their street;
+  - the twelve maps, turned to face their street;
   - a police station, a hospital and a school;
   - pocket parks and car parks.
 - Lots are fenced at the sides and back and open on the sidewalk.
@@ -288,7 +288,7 @@ All vehicles drive on rails: the right-hand lane of every street, turning at int
   - Nobody fires from a vehicle.
   - Gang members go everywhere on foot.
   - Away from any possible enemy, people skip perception and think every third tick; standing posts sleep until something comes near.
-- **The city campaign map (v0.10, after 1.0):** operations still happen in the eleven hand-built buildings, not on the city's lots. The Endless Battle has no civilians yet, and its police do not judge or arrest. All three come with the campaign map, which is the next planned update.
+- **The city campaign map (v0.10, after 1.0):** operations still happen in the twelve hand-built buildings, not on the city's lots. The Endless Battle has no civilians yet, and its police do not judge or arrest. All three come with the campaign map, which is the next planned update.
 - **Not planned:**
   - fragmentation grenades;
   - multiple floors (the apartment stairs are scenery).
@@ -305,7 +305,7 @@ scripts/city/*.gd         the city: generator, templates (police, hospital, scho
 scripts/city_main.gd      the Endless Battle scene
 scripts/sim/geom.gd       obstacles, sight lines (with the low-cover rule), bullet traces with height, door leaves
 scripts/sim/level.gd      map base: walls from room rectangles, doors and their states, room graph, posts for 30 a side
-scripts/maps/*.gd         the eleven maps and the registry
+scripts/maps/*.gd         the twelve maps and the registry
 scripts/sim/nav.gd        AStarGrid2D x4 (PF01/PF02 cost layers), cover spots, cached per map
 scripts/sim/op.gd         operator state, stances and body zones
 scripts/sim/world.gd      perception, tracking, hearing, aiming, shooting, wounds, stress, bad habits

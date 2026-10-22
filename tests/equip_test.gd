@@ -83,7 +83,15 @@ const GATES := {
 	"ram": {"measure": "s to the first officer inside, outer doors locked (less)", "dir": -1, "margin": 3.0},
 	"breach": {"measure": "s to the first officer inside, outer doors locked (less)", "dir": -1, "margin": 3.0},
 	"shield": {"measure": "rounds through to an officer facing 3 rifles, 10 m (fewer)", "dir": -1, "margin": 0.3, "range": true},
-	"light": {"measure": "s for police to recognize someone, at night (less)", "dir": -1, "margin": 0.05},
+	# An operation records only some ten night recognitions, so the per-run mean was
+	# noisy enough to flip this gate from seed to seed at the documented --n. Pooled over four
+	# times the seeds it settles: at the default --n=12, 0.49 s with the light against 0.54 s
+	# without, rising to 0.47 against 0.55 at --n=20. The margin is what the design reaches:
+	# the light only helps inside a 30 deg, 25 m beam, which is about half the recognitions,
+	# so a squad's mean falls by 0.05-0.08 s, not by the whole 1.25x night penalty. A light
+	# that does nothing measures 0.55 against 0.52 (the noise floor) and still fails; in
+	# daylight it measures the same both ways, which is what the 1.25x night term says.
+	"light": {"measure": "s for police to recognize someone, at night (less)", "dir": -1, "margin": 0.03, "pooled": true, "range": true, "seeds": 4},
 	"medkit": {"measure": "share of the downed who die after the operation (less)", "dir": -1, "margin": 0.1},
 	"taser": {"measure": "s until an unarmed man who will not give up is cuffed (less)", "dir": -1, "margin": 10.0},
 	"launcher": {"measure": "s until an unarmed man who will not give up is cuffed (less)", "dir": -1, "margin": 10.0},
@@ -388,12 +396,15 @@ func t_shield(on: bool, sd: int):
 	return v
 
 
+## The weapon light's own measure: the recognition seconds recorded against the number of
+## recognitions, so the driver can pool them (see the "pooled" note on the gate). A mean of
+## per-operation means would weight a run with two recognitions like a run with twenty.
 func t_light(on: bool, sd: int):
 	var w = _op(4, _police_kits(5, {"light": 1} if on else {}), sd, {"night": true, "police_rules": true})
 	var n: int = int(w.stat.get("rec_n_0", 0))
-	var v = float(w.stat.get("rec_sum_0", 0.0)) / n if n > 0 else null
+	var s: float = float(w.stat.get("rec_sum_0", 0.0))
 	w.dispose()
-	return v
+	return [s, n] if n > 0 else null
 
 
 func t_medkit(on: bool, sd: int):
