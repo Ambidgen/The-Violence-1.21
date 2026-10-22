@@ -6,6 +6,10 @@ extends SceneTree
 ##
 ## --gate (run it with --n=20: at the default 40 fights the share wobbles past 50%) passes when equal regulars' attackers win 30-50% (the hold layer's 33% before
 ## the brains, v0.7.9's 60% after).
+##
+## The full asserted matrix (every map family, regular/police/SOF, pooled n>=30, the
+## SOF hold-habit regression) is tests/balance_matrix_test.gd; this stays the quick
+## one-matchup check and the brains on/off comparison.
 
 const Maps = preload("res://scripts/maps/registry.gd")
 const Nav = preload("res://scripts/sim/nav.gd")
