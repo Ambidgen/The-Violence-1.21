@@ -514,6 +514,37 @@ func training_state() -> Dictionary:
 	return st
 
 
+## What the queued courses will cost when they start (Q8/Q9): known spending that
+## has not hit the account yet.
+func queued_cost() -> int:
+	var t := 0
+	for r in officers:
+		for cid in r.get("queue", []):
+			t += int(Courses.COURSES.get(cid, {}).get("cost", 0))
+	return t
+
+
+## The account, four weeks out, as far as it is knowable today (Q8): each week's
+## allocation against today's payroll, minus the lawsuits already filed and due
+## (pending entries of kind "lawsuit" from the city). It cannot know next week's
+## overtime, wounds or settlements nobody has filed yet — but a cash crunch made of
+## things already on the books should never be a surprise. First row is the end of
+## this week. Returns [{week, allocation, payroll, lawsuits, balance}].
+func forecast(weeks_n := 4, pending: Array = []) -> Array:
+	var rows: Array = []
+	var bal: int = balance
+	var pr: int = payroll()
+	for i in weeks_n:
+		var wk: int = week + i
+		var suits := 0
+		for p in pending:
+			if String(p.get("kind", "")) == "lawsuit" and int(p.get("due", -1)) == wk:
+				suits += int(p.get("cost", 0))
+		bal += allocation - pr - suits
+		rows.append({"week": wk, "allocation": allocation, "payroll": pr, "lawsuits": suits, "balance": bal})
+	return rows
+
+
 ## A course ends: what it teaches.
 func _finish_course(r: Dictionary) -> String:
 	var cid: String = r.get("course", "")
@@ -854,9 +885,25 @@ func apply_result(w, map_name: String) -> Array:
 			for j in range(i + 1, ids.size()):
 				var key := bond_key(ids[i], ids[j])
 				bonds[key] = int(bonds.get(key, 0)) + 1
-	# what the operation cost: overtime for everyone sent, and the restock
-	var ot: int = n_off * (Courses.OVERTIME + (Courses.NIGHT_PREMIUM if w.night else 0))
-	spend("Overtime, operation %d (%d officers)" % [ops_run, n_off], ot)
+	# what the operation cost: overtime for everyone sent, priced by the commitment
+	# (Q8: callout plus time on target; Q10: static post/patrol duty at half rate)
+	var static_ids := {}
+	if w.teams.size() > 0:
+		for el in w.teams[0].get("elements", []):
+			var kinds: Array = (el.get("orders", {}).get("objs", []) as Array).map(func(ob): return ob.get("kind", ""))
+			if not kinds.is_empty() and kinds.all(func(k): return k in ["post", "patrol"]):
+				for m in el["members"]:
+					static_ids[m.id] = true
+	var ot := 0
+	var n_static := 0
+	for o4 in w.ops:
+		if o4.officer_id == "":
+			continue
+		var st: bool = static_ids.has(o4.id)
+		ot += Courses.overtime(w.t, w.night, st)
+		n_static += 1 if st else 0
+	spend("Overtime, operation %d (%d officers, %d min%s)" % [ops_run, n_off, maxi(1, int(ceil(w.t / 60.0))),
+		(", %d on static duty at half rate" % n_static) if n_static > 0 else ""], ot)
 	spend("Restock, operation %d" % ops_run, int(round(restock)))
 	lines.append("Cost: $%s overtime, $%s to restock. Account: $%s." % [money(ot), money(int(round(restock))), money(balance)])
 	var ts: Dictionary = training_state()

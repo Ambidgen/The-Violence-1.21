@@ -10,8 +10,26 @@ const SENIORITY := 0.015
 const HEADROOM := 0.16
 const RESERVE := 25000          # in the account at the handover
 
-const OVERTIME := 160           # per officer per operation
+## Overtime (Q8, Q10): a callout minimum plus time on target, instead of a flat
+## $160 a head however long ten officers stood at a rally. A short raid (40 s) bills
+## $115, a three-minute one $145, a ten-minute commitment $250; static duty (posts
+## and patrol routes at an event) is billed at half rate, so the same ten quiet
+## minutes cost $125 a head, and the night premium is untouched by either.
+## (The old flat rate was $160 all-in, whatever the operation.)
+const OVERTIME_CALLOUT := 100   # per officer per operation, however short
+const OVERTIME_PER_MIN := 15    # per started minute on target
+const OVERTIME_CAP := 400
 const NIGHT_PREMIUM := 60       # on top, per officer, at night
+
+
+static func overtime(duration_s: float, night: bool, static_duty: bool) -> int:
+	var mins: int = maxi(1, int(ceil(duration_s / 60.0)))
+	var pay: int = mini(OVERTIME_CAP, OVERTIME_CALLOUT + OVERTIME_PER_MIN * mins)
+	if static_duty:
+		pay = int(round(pay * 0.5))
+	if night:
+		pay += NIGHT_PREMIUM
+	return pay
 const RECRUIT := 3500           # academy place for a rookie (two weeks before they report)
 const RECRUIT_WEEKS := 2
 const LATERAL := 6500           # signing an experienced officer from another force

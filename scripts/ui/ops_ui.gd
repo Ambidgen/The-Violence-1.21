@@ -581,14 +581,20 @@ func _dismiss(r: Dictionary) -> void:
 	_roster()
 
 
-## The account: this week and the last few, line by line (v0.8.5).
+## The account: the next four weeks as far as they are knowable, the grant, and
+## this week and the last few, line by line (v0.8.5, Q8).
 func _budget() -> void:
 	mode = "budget"
 	_clear()
 	var d = main.campaign.dept
 	_title("BUDGET  ·  week %d" % d.week)
 	_dept_strip(box)
-	_text(box, "The city's allocation comes in and the payroll goes out at the end of each week. Overtime, restocking, kit, hiring, training, medical bills and death benefits come out as they happen. In the red, hiring, training and new kit are frozen.", GREY, 10)
+	if flash != "":
+		_text(box, flash, INK, 11)
+		flash = ""
+	_text(box, "The city's allocation comes in and the payroll goes out at the end of each week. Overtime (a callout plus time on target; static duty at a rally at half rate), restocking, kit, hiring, training, medical bills and death benefits come out as they happen. In the red, hiring, training and new kit are frozen.", GREY, 10)
+	_forecast()
+	_grant_row()
 	var bb := ""
 	var shown := 0
 	for wk in range(d.week, maxi(0, d.week - 6), -1):
@@ -607,6 +613,57 @@ func _budget() -> void:
 		bb = "Nothing spent yet this campaign."
 	_rich(box, bb)
 	_btn(box, "<  Back to the board", func(): show_board())
+
+
+## Four weeks of the account on today's numbers (Q8): the allocation against
+## today's payroll and the lawsuits already filed, so a freeze that is already
+## on the books arrives announced. Overtime, wounds and settlements nobody has
+## filed yet are not in it, and it says so.
+func _forecast() -> void:
+	var d = main.campaign.dept
+	var v := _card(box)
+	_text(v, "THE NEXT FOUR WEEKS (on today's payroll)", INK, 12)
+	var worst := 0
+	for row in main.campaign.forecast(4):
+		var suits: int = int(row["lawsuits"])
+		var bal: int = int(row["balance"])
+		if bal < 0 and worst == 0:
+			worst = int(row["week"])
+		_text(v, "Week %d:  +$%s allocation  -$%s payroll%s    ->    $%s" % [int(row["week"]),
+			Department.money(int(row["allocation"])), Department.money(int(row["payroll"])),
+			("  -$%s a lawsuit settles" % Department.money(suits)) if suits > 0 else "",
+			Department.money(bal)], Ink.accent(0.9) if bal < 0 else INK, 11)
+	if worst > 0:
+		_text(v, "On these numbers the account is in the red at week %d: hiring, training and new kit freeze there, and the council counts the weeks. Spend less, settle nothing new, or ask the committee (below) before it lands." % worst, Ink.accent(0.9), 10)
+	var qc: int = d.queued_cost()
+	if qc > 0:
+		_text(v, "Not in the table: $%s of queued courses, paid when each starts." % Department.money(qc), GREY, 10)
+	_text(v, "Not knowable, so not in the table: next week's overtime, wounds, and any lawsuit not yet filed.", GREY, 10)
+
+
+## The grant (Q8): the one way to bring money in, while the budget chair is still
+## answering — and asking spends some of that goodwill.
+func _grant_row() -> void:
+	var p = main.campaign.politics
+	var v := _card(box)
+	_text(v, "A CITY GRANT", INK, 12)
+	var why: String = p.can_grant(main.campaign.dept.week)
+	var h := _h(v)
+	var gb := _btn(h, "Apply for a grant ($%s)" % Department.money(Politics.GRANT_AMOUNT), func(): _grant())
+	gb.disabled = why != ""
+	gb.tooltip_text = "One-time money from the budget committee. Needs Marguerite Duff at %d standing or better; asking costs %d of it, and the committee will not be asked again for %d weeks." % [
+		Politics.GRANT_STANDING, Politics.GRANT_FAVOUR, Politics.GRANT_COOLDOWN]
+	if why != "":
+		_lab(h, why, GREY, 10)
+	else:
+		_lab(h, "Duff is at %d: she would sign it." % p.standing("council"), GREY, 10)
+
+
+func _grant() -> void:
+	var res: Dictionary = main.campaign.politics.apply_grant(main.campaign.dept.week, main.campaign.dept)
+	flash = String(res.get("line", ""))
+	main.ops_dept_changed()
+	_budget()
 
 
 ## Internal affairs: every open case and its four answers (v0.8.5).
@@ -727,6 +784,10 @@ func _briefing(s: Dictionary) -> void:
 	_text(box, "Visibility %s: %s" % [dots(int(s["visibility"])), ["", "almost nobody is watching; mistakes can stay quiet for months",
 		"a few neighbours", "a street's worth of phones", "reporters likely; anything that happens is seen", "live cameras and a crowd: it will all be seen, at once"][clampi(int(s["visibility"]), 1, 5)]], GREY, 11)
 	_text(box, "Time pressure: %s" % Situations.PRESSURE_NAMES.get(s["pressure"], s["pressure"]), GREY, 11)
+	if s["type"] == "event":
+		var ch: Dictionary = Situations.chatter(s)
+		_text(box, "Sizing the detail: the standing answer is ten officers; on lowered chatter six suffice — Suggest a plan sends %d on this reading (%s, %d%% confidence). Static post and patrol duty bills at half overtime, but fifteen minutes of it is still fifteen minutes: the catastrophic tail is the price of sending six to the wrong rally." % [
+			Autoplan.want_for(s), String(ch.get("level", "no word")), int(ch.get("conf", 30))], GREY, 11)
 	var bb := "[b]WHAT IS KNOWN[/b]\n"
 	for ln in Situations.briefing_lines(s):
 		bb += ("[b]%s:[/b] %s  [i](confirmed)[/i]\n" if ln["known"] else "%s: %s\n") % [ln["label"], String(ln["text"]).replace("[", "(")]

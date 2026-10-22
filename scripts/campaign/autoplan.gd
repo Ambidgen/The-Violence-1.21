@@ -7,9 +7,22 @@ extends RefCounted
 const Orders = preload("res://scripts/campaign/orders.gd")
 const Equipment = preload("res://scripts/data/equipment.gd")
 const Operation = preload("res://scripts/campaign/operation.gd")
+const Situations = preload("res://scripts/campaign/situations.gd")
 const Squads = preload("res://scripts/data/squads.gd")
 
 const WANT := {"warrant": 7, "gang": 10, "barricade": 7, "hostage": 9, "event": 10}
+## A rally on lowered chatter does not need the full ten standing in the sun (Q10):
+## six officers suffice; ten stays the answer when the chatter is raised (or there
+## is no word either way — silence is not safety).
+const EVENT_WANT_LOW := 6
+
+
+## How many officers the suggestion wants for one situation, priced by what the
+## briefing actually says.
+static func want_for(sit: Dictionary) -> int:
+	if sit.get("type", "") == "event" and String(Situations.chatter(sit).get("level", "")) == "lowered":
+		return EVENT_WANT_LOW
+	return int(WANT.get(sit.get("type", ""), 8))
 
 
 ## Exterior doors of a map as opening indices, nearest to a point first.
@@ -50,7 +63,7 @@ static func share(board: Array, sid: String, free: int) -> int:
 			continue
 		if s["id"] != sid and not s.get("plan", {}).get("squads", []).is_empty():
 			continue
-		var w: int = WANT.get(s["type"], 8)
+		var w: int = want_for(s)
 		total += w
 		if s["id"] == sid:
 			mine = w
@@ -72,7 +85,7 @@ static func share(board: Array, sid: String, free: int) -> int:
 ## cap: the most officers to take (-1: as many as the situation wants).
 static func suggest(sit: Dictionary, available: Array, lv, bodycams := false, cap := -1) -> Dictionary:
 	var pool := ranked(available)
-	var want: int = mini(WANT.get(sit["type"], 8), pool.size())
+	var want: int = mini(want_for(sit), pool.size())
 	if cap >= 0:
 		want = mini(want, cap)
 	want = mini(want, Squads.MAX_SIDE)

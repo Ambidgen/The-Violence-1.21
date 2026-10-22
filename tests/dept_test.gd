@@ -141,6 +141,7 @@ func _init() -> void:
 	_running_the_department()
 	_applicants_and_statements()
 	_training_queue()
+	_money_by_the_book()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 	print("problems: %d" % problems)
 	quit()
@@ -300,3 +301,25 @@ func _training_queue() -> void:
 	_check(d.bond(mates[0]["id"], mates[1]["id"]) == b_pair + 1, "and comes back bonded (+1, as from an operation together)")
 	var ts: Dictionary = d.training_state()
 	_check(int(ts["on_course"]) >= 3, "training_state sees them (%d on a course)" % int(ts["on_course"]))
+
+
+## Playtest pass Q8/Q10: overtime by the commitment, and the forecast.
+func _money_by_the_book() -> void:
+	print("  -- overtime and the forecast (Q8, Q10)")
+	_check(Courses.overtime(40.0, false, false) == 115, "a 40-second raid bills $115 a head (callout plus a minute)")
+	_check(Courses.overtime(180.0, false, false) == 145, "three minutes bills $145, against the old flat $160")
+	_check(Courses.overtime(600.0, false, true) == 125, "ten quiet minutes of static duty bill $125 at half rate")
+	_check(Courses.overtime(600.0, false, false) == 250 and Courses.overtime(600.0, true, true) == 185,
+		"the same ten minutes through doors bill $250, and night static $185 (the premium is never halved)")
+	var d = Department.new()
+	d.found(31)
+	var bal0: int = d.balance
+	var swing: int = d.allocation - d.payroll()
+	var rows: Array = d.forecast(4, [{"due": d.week + 1, "kind": "lawsuit", "cost": 40000},
+		{"due": d.week + 2, "kind": "story", "cost": 999999}])
+	_check(rows.size() == 4 and int(rows[0]["balance"]) == bal0 + swing, "week one of the forecast is this week's end ($%s)" % Department.money(int(rows[0]["balance"])))
+	_check(int(rows[1]["lawsuits"]) == 40000 and int(rows[3]["balance"]) == bal0 + 4 * swing - 40000,
+		"the filed lawsuit lands in its week and stays landed; a story costs trust, not money ($%s by week %d)" % [Department.money(int(rows[3]["balance"])), int(rows[3]["week"])])
+	# and the books agree with the forecast's first row when nothing is spent
+	d.next_week()
+	_check(d.balance == bal0 + swing, "an unspent week ends where the forecast said ($%s)" % Department.money(d.balance))

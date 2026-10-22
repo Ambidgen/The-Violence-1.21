@@ -24,6 +24,13 @@ const Situations = preload("res://scripts/campaign/situations.gd")
 const LOST := 25
 const REGAINED := 40
 const ELECTION_WEEK := 40
+## The one positive money decision (Q8): a city grant, for a chief the budget chair
+## still answers the phone for. It costs some of her standing (a favour called in)
+## and the committee will not be asked twice in a quarter.
+const GRANT_AMOUNT := 10000
+const GRANT_STANDING := 60
+const GRANT_COOLDOWN := 8       # weeks between grants
+const GRANT_FAVOUR := 5         # council standing spent asking
 
 const ALLIES := {
 	"council": {"name": "Marguerite Duff", "title": "Councillor, chair of the budget committee", "start": 55,
@@ -54,6 +61,7 @@ var pending: Array = []        # [{due, kind, ...}] consequences still to land
 var press: Array = []          # [{week, head, body, kind}]
 var record := {}               # running totals the press and the endings quote
 var ended := false
+var last_grant := -99          # week of the last city grant (Q8)
 var result := {}               # the election, once held
 var rng := RandomNumberGenerator.new()
 
@@ -75,7 +83,7 @@ func start(seed_v: int) -> void:
 	result = {}
 	record = {"civ_hit": 0, "civ_killed": 0, "excessive": 0, "officers_killed": 0, "suspects_killed": 0, "arrests": 0,
 		"successes": 0, "failures": 0, "unattended": 0, "stories": 0, "settled": 0, "leaks": 0, "charged": 0,
-		"dismissed": 0, "cleared": 0, "crowd_killed": 0}
+		"dismissed": 0, "cleared": 0, "crowd_killed": 0, "grants": 0}
 	_headline(1, "NEW CHIEF TAKES COMMAND OF PORT CARRICK PD", "Forty weeks to the election. The council wants results, the coalition wants answers, and the union wants a raise.", "city")
 
 
@@ -168,6 +176,35 @@ func _headline(week: int, head: String, body: String, kind: String) -> void:
 	press.append({"week": week, "head": head, "body": body, "kind": kind})
 	if press.size() > 300:
 		press = press.slice(press.size() - 300)
+
+
+## Whether the budget committee can be asked for a grant this week (Q8): "" if it
+## can, else why not, in words the budget screen can show.
+func can_grant(week: int) -> String:
+	if lost("council"):
+		return "Marguerite Duff is lost: the committee will not take the application"
+	if standing("council") < GRANT_STANDING:
+		return "needs the budget chair at %d standing or better (now %d)" % [GRANT_STANDING, standing("council")]
+	if week - last_grant < GRANT_COOLDOWN:
+		return "the committee approved one in week %d; week %d at the earliest" % [last_grant, last_grant + GRANT_COOLDOWN]
+	return ""
+
+
+## Ask, and be given: $GRANT_AMOUNT into the account, the favour spent. Returns
+## {ok, line} — the line reads the same in the budget screen and the department log.
+func apply_grant(week: int, dept) -> Dictionary:
+	var why := can_grant(week)
+	if why != "" or dept == null:
+		return {"ok": false, "line": "No grant: " + (why if why != "" else "no department") + "."}
+	dept.income("City grant (budget committee)", GRANT_AMOUNT)
+	last_grant = week
+	record["grants"] = int(record.get("grants", 0)) + 1
+	var lines: Array = []
+	_ally("council", -GRANT_FAVOUR, dept, lines)
+	_headline(week, "CITY GRANT KEEPS PORT CARRICK PD SOLVENT", "Duff (budget chair): 'One-time money. Do not make a habit of needing it.'", "money")
+	var line := "The budget committee awards the department a $%s grant. Duff's goodwill is spent asking (%d)." % [dept.money(GRANT_AMOUNT), standing("council")]
+	dept.note(line)
+	return {"ok": true, "line": line}
 
 
 ## A story lands: weeks after for low visibility (sometimes never), soon for high, and
@@ -581,7 +618,7 @@ func ending(dept) -> Dictionary:
 func to_data() -> Dictionary:
 	return {"trust": trust.duplicate(), "allies": allies.duplicate(true), "polls": polls.duplicate(), "pending": pending.duplicate(true),
 		"press": press.duplicate(true), "record": record.duplicate(), "ended": ended, "result": result.duplicate(true),
-		"rng_state": str(rng.state)}
+		"last_grant": last_grant, "rng_state": str(rng.state)}
 
 
 func from_data(d: Dictionary, seed_v: int) -> void:
@@ -606,5 +643,6 @@ func from_data(d: Dictionary, seed_v: int) -> void:
 	for k2 in d.get("record", {}):
 		record[k2] = int(d["record"][k2])
 	ended = bool(d.get("ended", false))
+	last_grant = int(d.get("last_grant", -99))
 	result = d.get("result", {})
 	rng.state = String(d.get("rng_state", "0")).to_int()

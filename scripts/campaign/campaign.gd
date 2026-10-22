@@ -56,6 +56,12 @@ func after_operation(sid: String, result: Dictionary, w) -> Array:
 	return politics.on_operation(dept.week, s, result, w, dept)
 
 
+## The account four weeks out (Q8): the department's books against the city's
+## pending ledger (the lawsuits already filed).
+func forecast(weeks_n := 4) -> Array:
+	return dept.forecast(weeks_n, politics.pending if politics != null else [])
+
+
 ## Decide an internal affairs case: the department carries it out, the city watches.
 func decide_case(c: Dictionary, decision: String) -> String:
 	var ln: String = dept.decide(c, decision)
