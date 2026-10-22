@@ -336,6 +336,7 @@ static func build_planned(sit: Dictionary, plan: Dictionary, dept, level, nav) -
 			c["squad"] = si
 			c["pace"] = od.get("pace", "")
 			c["tight"] = od.get("tight", false)
+			c["less"] = od.get("less", false)
 			c["pistols"] = od.get("pistols", false)
 			c["avoid_key"] = ak
 			c["bodycam"] = bool(plan.get("bodycams", dept.bodycams))

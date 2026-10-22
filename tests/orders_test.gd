@@ -23,7 +23,7 @@ func _init() -> void:
 	dept = Department.new()
 	dept.found(77)
 	var tests := ["clear", "arrest", "rescue", "contain", "post", "patrol", "avoid", "consolidate", "phase", "entry",
-		"pace", "tight", "knock", "pistols"]
+		"pace", "tight", "less", "knock", "pistols"]
 	if args.has("only"):
 		tests = [args["only"]]
 	var passed := 0
@@ -63,6 +63,7 @@ const GATES := {
 	"entry": {"measure": "first room entered is the kitchen (share)", "dir": 1, "margin": 0.5},
 	"pace": {"measure": "top speed out of a fight, m/s (lower)", "dir": -1, "margin": 0.3},
 	"tight": {"measure": "police rounds at an armed man not attacking", "dir": -1, "margin": 0.5},
+	"less": {"measure": "police rounds at an armed man not attacking", "dir": -1, "margin": 0.5, "n_min": 16},
 	"knock": {"measure": "civilians with hands up at first entry", "dir": 1, "margin": 0.5},
 	"pistols": {"measure": "rifle rounds fired by police (fewer)", "dir": -1, "margin": 1.5},
 }
@@ -302,6 +303,20 @@ func t_tight(on: bool, sd: int) -> float:
 			pre += 1
 			if args.has("vv"):
 				print("      ", on, " ", sh)
+	w.dispose()
+	return pre
+
+
+func t_less(on: bool, sd: int) -> float:
+	# a man with a rifle slung, not expecting anyone: the order brings a less-lethal
+	# tool after one challenge, so pre-attack shots give way to OC, taser or baton
+	var sit := _sit("gang", sd, [{"role": "suspect", "ech": "untrained", "room": "LIVING", "arms": "rifle", "alert": 0}])
+	var extra := {"less": true} if on else {}
+	var w = _run(4, sit, {"squads": [_sq(_officers(4), _od([{"kind": "clear", "rooms": []}], extra))]}, 180.0)
+	var pre := 0
+	for sh in w.incident.shots:
+		if sh["pol"] and sh["tgt"] != "" and not sh.get("att", true) and sh["verdict"] == "threat":
+			pre += 1
 	w.dispose()
 	return pre
 

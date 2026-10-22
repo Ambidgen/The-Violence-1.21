@@ -144,6 +144,7 @@ var persona := {}       # civilian: {panic, curiosity, defiance, mobility, phone
 var squad := -1         # police squad (element) this officer was assigned to (-1: formed automatically)
 var pace_cap := ""      # order: "walk" or "creep" caps movement speed
 var roe_tight := false  # order Weapons tight: fire only at someone firing or pointing a weapon
+var less_first := false # order Less-lethal first: a tool, not a round, on a covered man inside 4 m
 var avoid_key := ""     # order Avoid: the navigation overlay this officer's paths use
 var flight := 0.0       # suspect: readiness to run for it when police are close (0-1)
 var hostage := false    # civilian held by captors (stays put until freed)
@@ -200,6 +201,7 @@ func configure(cfg: Dictionary) -> void:
 	squad = int(cfg.get("squad", -1))
 	pace_cap = cfg.get("pace", "")
 	roe_tight = cfg.get("tight", false)
+	less_first = cfg.get("less", false)
 	avoid_key = cfg.get("avoid_key", "")
 	pistols_only = cfg.get("pistols", false)
 	# equipment: a kit given with the configuration, or the v0.7 issue (carbine and

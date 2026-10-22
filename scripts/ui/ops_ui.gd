@@ -926,6 +926,7 @@ func _orders(s: Dictionary) -> void:
 	_constraint_row(cv, od, "entry", pts, used)
 	_constraint_row(cv, od, "pace", pts, used)
 	_constraint_row(cv, od, "tight", pts, used)
+	_constraint_row(cv, od, "less", pts, used)
 	_constraint_row(cv, od, "knock", pts, used)
 	_constraint_row(cv, od, "pistols", pts, used)
 	var bb := "[b]SQUAD %d[/b]\n" % (sel_sq + 1)
