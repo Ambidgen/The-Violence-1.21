@@ -112,6 +112,10 @@ func _dyn_trace(a: Vector2, b: Vector2, best_t: float) -> Array:
 
 
 ## The first shut leaf a body moving from a to b would walk into (radius rad), or -1.
+## Only a leaf the body is going *through* is in the way: the move has to close on the
+## leaf's face or cross it. Someone sliding along a shut door — down a 2 m hall, round a
+## corner, past a closed bathroom door a hand's width away — used to be caught by the
+## grown leaf and stopped dead to open a door he was only walking past (v1.2.1).
 func leaf_in_way(a: Vector2, b: Vector2, rad := 0.25) -> int:
 	if dyn_active <= 0:
 		return -1
@@ -121,18 +125,83 @@ func leaf_in_way(a: Vector2, b: Vector2, rad := 0.25) -> int:
 	for i in dyn_rect.size():
 		if dyn_on[i] == 0:
 			continue
-		var r: Rect2 = dyn_rect[i].grow(rad)
-		if r.has_point(a):
-			# already pressed against it: moving deeper into the leaf counts
-			var c: Vector2 = dyn_rect[i].get_center()
-			if (b - a).dot(c - a) > 0.0:
-				return i
+		var leaf: Rect2 = dyn_rect[i]
+		# the leaf is thin across the door and wide along the opening: its face is the
+		# thin axis, and the body has to move closer to that face (or past it)
+		var ax := 0 if leaf.size.x <= leaf.size.y else 1
+		var face: float = leaf.get_center()[ax]
+		var da: float = a[ax] - face
+		var db: float = b[ax] - face
+		if da * db > 0.0 and absf(db) >= absf(da) - 0.0001:
 			continue
-		var tt := seg_rect(a, d, r)
+		var tt := seg_rect(a, d, leaf.grow(rad))
 		if tt.x >= 0.0 and tt.x < best_t:
 			best_t = tt.x
 			best = i
 	return best
+
+
+## Does a body of radius rad sliding from a to b keep clear of every obstacle that blocks
+## movement? The body is grown into the obstacle and the leg tested against it, so a leg
+## that would only clip the corner of a wall or a door frame is refused. (The navigation
+## cell test alone cannot see that: cells are 0.25 m across and it samples one point per
+## cell, so a leg can pass between two samples.)
+func path_clear(a: Vector2, b: Vector2, rad := 0.30) -> bool:
+	if rad <= 0.0:
+		return true
+	for idx in candidates(a, b, 1):
+		if _mv[idx] == 0:
+			continue
+		if seg_rect_dist(a, b, _rect[idx]) < rad:
+			return false
+	return true
+
+
+## The same for one leg of a path: it may hug whatever it already touches at either end,
+## so the radius shrinks to the clearance of the nearer end. A path that starts with a
+## shoulder against a wall is still smoothed away from it, but nothing that would take the
+## body deeper in is allowed. This is what the navigator's smoothing asks.
+func path_clear_leg(a: Vector2, b: Vector2, rad := 0.30) -> bool:
+	if a.distance_squared_to(b) < 0.0004:
+		return true
+	for idx in candidates(a, b, 1):
+		if _mv[idx] == 0:
+			continue
+		var r: Rect2 = _rect[idx]
+		var lim: float = minf(rad, minf(_rect_dist(a, r), _rect_dist(b, r))) - 0.01
+		if lim <= 0.01:
+			continue
+		if seg_rect_dist(a, b, r) < lim:
+			return false
+	return true
+
+
+## Distance from the segment a->b to the rectangle r: 0 when the segment crosses it,
+## otherwise the shortest way from the segment to the rectangle's edges or corners.
+static func seg_rect_dist(a: Vector2, b: Vector2, r: Rect2) -> float:
+	if seg_rect(a, b - a, r).x >= 0.0:
+		return 0.0
+	var best := INF
+	var corners: Array[Vector2] = [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+	for corner in corners:
+		best = minf(best, _seg_point_dist(a, b, corner))
+	best = minf(best, _rect_dist(a, r))
+	return minf(best, _rect_dist(b, r))
+
+
+## Distance from p to the segment a->b.
+static func _seg_point_dist(a: Vector2, b: Vector2, p: Vector2) -> float:
+	var ab := b - a
+	var l2 := ab.length_squared()
+	if l2 < 1e-12:
+		return a.distance_to(p)
+	return (a + ab * clampf((p - a).dot(ab) / l2, 0.0, 1.0)).distance_to(p)
+
+
+## Distance from p to the nearest point of an axis-aligned rectangle (0 inside it).
+static func _rect_dist(p: Vector2, r: Rect2) -> float:
+	var q := Vector2(clampf(p.x, r.position.x, r.end.x), clampf(p.y, r.position.y, r.end.y))
+	return q.distance_to(p)
 
 
 func setup(w: float, h: float) -> void:
@@ -205,8 +274,12 @@ func _collect(cx: int, cy: int, out: Array) -> void:
 			out.append(idx)
 
 
-## Obstacle indices whose buckets the segment a->b passes through (2D DDA).
-func candidates(a: Vector2, b: Vector2) -> Array:
+## Obstacle indices whose buckets the segment a->b passes through (2D DDA). With halo,
+## the buckets that far around each of them are collected too: a query that has to be
+## sure it has every obstacle within `halo` metres of the line (clearance tests) cannot
+## rely on the walk alone, because a bucket's edge is where an obstacle is filed, not
+## where it is.
+func candidates(a: Vector2, b: Vector2, halo := 0) -> Array:
 	_stamp_id += 1
 	var out: Array = []
 	var x := int(floor(a.x))
@@ -228,7 +301,12 @@ func candidates(a: Vector2, b: Vector2) -> Array:
 		t_dy = absf(1.0 / d.y)
 	var guard := 0
 	while true:
-		_collect(x, y, out)
+		if halo == 0:
+			_collect(x, y, out)
+		else:
+			for hy in range(-halo, halo + 1):
+				for hx in range(-halo, halo + 1):
+					_collect(x + hx, y + hy, out)
 		if (x == xe and y == ye) or guard > 512:
 			break
 		if t_max_x < t_max_y:

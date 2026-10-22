@@ -2172,7 +2172,7 @@ func move_to(o, p: Vector2, mode: String, prof := -1, free := false) -> void:
 	o.speed = spd
 	var stuck := false
 	if t > o.repath_t:
-		stuck = o.moving and o.pos.distance_to(o.ticker.get("prog_p", Vector2.INF)) < 0.1 and not blocks_move(o)
+		stuck = o.moving and o.pos.distance_to(o.ticker.get("prog_p", Vector2.INF)) < 0.1 and not blocks_move(o) and not door_ahead(o)
 		o.ticker["prog_p"] = o.pos
 		o.repath_t = t + 1.5
 	var ak: String = "" if free else o.avoid_key
@@ -2203,6 +2203,20 @@ func move_to(o, p: Vector2, mode: String, prof := -1, free := false) -> void:
 ## Pause movement but keep the path, so resuming toward the same goal costs nothing.
 func stop(o) -> void:
 	o.moving = false
+
+
+## Is a shut door the thing holding o up? Standing at one is not a bad path — the officer
+## is opening it, or waiting while someone else does — and re-running the search cannot
+## help. Without this a squad queued at a locked door searched the whole building again
+## every 1.5 s, one search per officer.
+func door_ahead(o) -> bool:
+	if geom.dyn_active <= 0 or o.path.is_empty():
+		return false
+	var k: int = clampi(o.path_i, 0, o.path.size() - 1)
+	var d: Vector2 = o.path[k] - o.pos
+	if d.length_squared() < 0.0004:
+		return false
+	return geom.leaf_in_way(o.pos, o.pos + d.limit_length(0.45), 0.25) >= 0
 
 
 func at(o, p: Vector2, tol := 0.35) -> bool:

@@ -4,7 +4,8 @@ extends RefCounted
 ##   profile 0: shortest path          profile 1: + PF01 doorway cost (x8)
 ##   profile 2: + PF02 exposure cost   profile 3: both
 ## Exposure is static: each cell pays +3 per door or window that can see it (cap +9).
-## Precomputed once per map (on a 1 m lattice for big maps) and cached across matches.
+## Precomputed once per map on the 0.25 m lattice and cached across matches (the city
+## keeps one lattice per building template instead: see scripts/city/city_nav.gd).
 
 const Geom = preload("res://scripts/sim/geom.gd")
 const CS := 0.25            # cell size, metres
@@ -405,6 +406,9 @@ func _w(prof: int, i: int) -> float:
 	return v
 
 
+## Can a smoothed leg run from a to b? Two questions: does it cross any cell that is not
+## walkable or that costs more than the cell it starts in, and — the part the cell test
+## never answered — does the *body* fit along it.
 func line_ok(prof: int, a: Vector2, b: Vector2) -> bool:
 	var steps := int(a.distance_to(b) / CS) + 1
 	var w0 := 1.0
@@ -417,7 +421,11 @@ func line_ok(prof: int, a: Vector2, b: Vector2) -> bool:
 			return false
 		if (prof != 0 or not _mask.is_empty()) and _w(prof, i) > w0 + 0.01:
 			return false
-	return true
+	# Sampling one point per 0.25 m cell was not enough (v1.2.1): a leg could cross the
+	# corner of a blocked cell between two samples and put the body through a door jamb or
+	# a wall corner — up to 12 cm of it on the shipped maps. The segment is now tested
+	# against the obstacles themselves, at the body's radius.
+	return geom.path_clear_leg(a, b, RADIUS)
 
 
 func path_length(pts: PackedVector2Array) -> float:

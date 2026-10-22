@@ -384,6 +384,7 @@ tests/                    headless tests and an art gallery
 
 ```
 godot --headless --path . -s res://tests/maps_test.gd -- --run=1           # validate every map, then 5v5 and 20v20 on each
+godot --headless --path . -s res://tests/nav_door_test.gd                  # every door on every map: the body fits, a shut leaf is not walked past
 godot --headless --path . -s res://tests/stall_test.gd                     # six matchups per map; flags time-limit stalls
 godot --headless --path . -s res://tests/determinism_test.gd               # 35 seeded cases against the fixture (--write to reset)
 godot --headless --path . -s res://tests/habits_test.gd -- --strict        # every habit read somewhere, or a declared suspension
