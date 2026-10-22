@@ -293,6 +293,22 @@ static func _num(n: int) -> String:
 
 
 # ================================================================== internal affairs
+## Q3: how likely a cleared serious case is to leak. The evidence sets the base (as
+## before: 55% with video, 25% with witnesses); the named officer's integrity scales
+## it (a reputation for straight paperwork keeps a closed file closed, and the
+## reverse is also true), and a statement contradicted by the evidence is exactly
+## the kind of detail somebody takes to a reporter.
+static func leak_p(strength: String, integrity: int, statement := "untested") -> float:
+	var p: float = 0.55 if strength == "video" else 0.25
+	p *= clampf(1.6 - float(integrity) / 100.0, 0.5, 1.5)
+	match statement:
+		"disagrees":
+			p *= 1.3
+		"matches":
+			p *= 0.8
+	return clampf(p, 0.02, 0.9)
+
+
 ## A case was decided (Department.decide). The union watches the discipline, the
 ## coalition watches the cases, and the DA watches what is cleared.
 func on_decision(week: int, c: Dictionary, decision: String, dept) -> Array:
@@ -304,6 +320,13 @@ func on_decision(week: int, c: Dictionary, decision: String, dept) -> Array:
 			record["cleared"] += 1
 			_ally("union", 2, dept, lines)
 			if serious and strong:
+				# what the file says about the officer's own account (Q3)
+				var integ: int = int(c.get("integrity", 60))
+				if dept != null:
+					var rec: Dictionary = dept.get_officer(c["officer"])
+					if not rec.is_empty():
+						integ = int(rec.get("integrity", integ))
+				var stmt: String = String(c.get("statement", "untested"))
 				if lost("da"):
 					# the DA's office reviews it and charges the officer
 					var r: Dictionary = dept.get_officer(c["officer"])
@@ -315,11 +338,13 @@ func on_decision(week: int, c: Dictionary, decision: String, dept) -> Array:
 						record["charged"] += 1
 						lines.append("The DA's office has charged %s %s over %s." % [r["rank"], r["name"], c["id"]])
 						_headline(week, "DA CHARGES OFFICER THE CHIEF CLEARED", "%s %s is suspended pending trial. Varga: 'Somebody has to read the files.'" % [r["rank"], r["name"]], "case")
-				elif rng.randf() < (0.55 if c["strength"] == "video" else 0.25):
+				elif rng.randf() < leak_p(String(c["strength"]), integ, stmt):
 					pending.append({"due": week + rng.randi_range(1, 4), "kind": "leak", "case": c["id"], "officer": c["officer"],
 						"strength": c["strength"], "text": c.get("text", "")})
-				_ally("da", -4, dept, lines)
-				_ally("coalition", -3, dept, lines)
+				# clearing a man whose statement matched the record reads as honest
+				# process; clearing one it contradicted reads as a cover-up
+				_ally("da", {"disagrees": -6, "matches": -2}.get(stmt, -4), dept, lines)
+				_ally("coalition", {"disagrees": -5, "matches": -1}.get(stmt, -3), dept, lines)
 		"retrain":
 			_ally("union", -1, dept, lines)
 			_ally("coalition", 1, dept, lines)

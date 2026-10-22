@@ -203,3 +203,46 @@ func _running_the_department() -> void:
 	var d2 = Department.new()
 	d2.from_data(JSON.parse_string(j1))
 	_check(JSON.stringify(d2.to_data()) == j1, "the budget, courses and cases survive a save")
+
+
+## Playtest pass Q2/Q3: the applicant pool and the paper trail.
+func _applicants_and_statements() -> void:
+	print("  -- applicants and statements (Q2, Q3)")
+	var d = Department.new()
+	d.found(99)
+	var pool: Array = d.applicants_now()
+	_check(pool.size() >= 2 and pool.size() <= 4, "a weekly pool of two to four applicants (%d)" % pool.size())
+	var ids := {}
+	for r in pool:
+		ids[r["id"]] = true
+		_check(not d.officers.has(r) and r.has("integrity") and r.has("judgment") and r.has("bad_traits"),
+			"%s is a complete record, not yet an officer" % r["name"])
+	_check(ids.size() == pool.size(), "every applicant distinct")
+	# hiring one spends the right money, sends a rookie to the academy (or a lateral
+	# to duty at once), and the rest walk
+	var pick: Dictionary = pool[0]
+	var n_off: int = d.officers.size()
+	var b0: int = d.balance
+	var cost: int = Department.applicant_cost(pick)
+	var got: Dictionary = d.choose_applicant(pick)
+	_check(got == pick and d.officers.size() == n_off + 1 and d.balance == b0 - cost, "hiring from the pool costs $%s" % Department.money(cost))
+	_check((pick["status"] == "academy" and int(pick["out_until"]) == d.week + Courses.RECRUIT_WEEKS) if not pick["lateral"] else pick["status"] == "active",
+		"a rookie reports after the academy; a lateral hire at once (%s)" % pick["status"])
+	_check(d.applicants_now().is_empty() and String(pick["id"]).begins_with("PC-"), "the rest walked; the chosen one has a badge number id (%s)" % pick["id"])
+	# next week brings a fresh pool, and it survives a save mid-week
+	d.next_week()
+	_check(d.applicants_now().size() >= 2, "next week, a fresh pool (%d)" % d.applicants_now().size())
+	var j := JSON.stringify(d.to_data())
+	var d2 = Department.new()
+	d2.from_data(JSON.parse_string(j))
+	_check(JSON.stringify(d2.to_data()) == j and d2.applicants.size() == d.applicants.size(), "the pool survives a save")
+	# frozen hiring blocks the choice but not the looking
+	d.balance = -500
+	var before: Array = d.applicants_now()
+	_check(not before.is_empty() and d.choose_applicant(before[0]).is_empty(), "in the red the pool still applies, but nobody can be hired")
+	# Q3: the statement and testimony rolls, at their thresholds
+	_check(Department.statement_for(90, "video", 0.0) == "matches", "integrity 90: the statement matches the body camera")
+	_check(Department.statement_for(10, "video", 0.05) == "disagrees", "integrity 10: the statement can simply not match")
+	_check(Department.statement_for(10, "none", 0.0) == "untested", "with nothing to check against, a statement is untested")
+	_check(Department.testimony_for(90, 0.1) == "corroborates" and Department.testimony_for(10, 0.1) == "contradicts",
+		"a squadmate's statement follows their integrity")

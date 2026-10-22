@@ -45,7 +45,7 @@ var vest := false       # soft armour: stops pistol rounds to the chest, not rif
 var bodycam := false    # records what the officer sees (evidence; v0.7: the player's live view)
 var judgment := 50      # 0-100: how fast and how well a recognized person is judged a threat
 var temper := 40        # 0-100: how long the trigger stays pulled after someone gives up
-var integrity := 60     # 0-100: whether reports match what happened (record only, for now)
+var integrity := 60     # 0-100: whether reports match what happened (read by the department after the operation: statements, testimony, leaks)
 var civ := false        # a civilian: nobody targets them on purpose; every bullet can hit them
 
 # ---------------------------------------------------------------- runtime

@@ -12,6 +12,14 @@ extends RefCounted
 ## v0.8.5 adds the running of it: a weekly budget (the city's allocation against pay,
 ## overtime, kit, hiring, training, injuries and deaths), training courses, internal
 ## affairs cases with their decisions, and department morale.
+##
+## Playtest pass (Q2, Q3, Q8, Q9, Q10): hiring by choice from a weekly applicant pool
+## instead of a blind roll; Integrity read after every operation (the officer's own
+## statement and a squadmate's testimony can disagree with the evidence in their IA
+## case, and the city's leak roll reads the same stat); a per-officer course queue
+## with classroom courses at a hospital bedside and a cohort refresher; overtime
+## priced by time on target (static event duty at half rate); and a four-week
+## cash-flow forecast.
 
 const Habits = preload("res://scripts/data/habits.gd")
 const Equipment = preload("res://scripts/data/equipment.gd")
@@ -60,6 +68,8 @@ var cases: Array = []         # internal affairs: [{id, officer, week, kind, tex
 var case_serial := 0
 var deficit_weeks := 0
 var morale_home := Courses.MORALE0   # v0.9: where morale settles (the union's goodwill)
+var applicants: Array = []           # Q2: this week's applicant pool (full records, not yet officers)
+var applicant_week := 0              # the week the pool was rolled; unchosen applicants walk at week's end
 var _founding := false
 var rng := RandomNumberGenerator.new()
 var names
@@ -96,24 +106,41 @@ func found(seed_v: int, n := 0) -> void:
 	note("Department inherited: %d officers (%d with five years or more on the job)." % [officers.size(),
 		officers.filter(func(r): return float(r.get("years", 0.0)) >= 5.0).size()])
 	note("The city allocates $%s a week; payroll is $%s; $%s in the account." % [money(allocation), money(payroll()), money(balance)])
+	_roll_applicants()
 
 
 ## Hire one officer. A rookie is Patrol (the midpoint of Militia and Regular in every
 ## stat); years of service move the stats towards Regular and add habits. A lateral
 ## hire arrives with experience.
 func hire(rank := "Officer", xp := 0, lateral := false, years := 0.0) -> Dictionary:
+	var r := _roll_record(rank, xp, lateral, years)
+	officers.append(r)
+	return r
+
+
+## Roll one complete record without adding it to the roster (Q2: the applicant pool
+## rolls people the chief can inspect before anyone is hired). The rolls happen in
+## exactly the order hire() has always made them, so a founded department comes out
+## the same for the same seed; only the serial (no rng in it) is pool-aware.
+func _roll_record(rank := "Officer", xp := 0, lateral := false, years := 0.0, pool := false) -> Dictionary:
 	if names == null:
 		names = Names.new(seed_val * 7 + 3 + serial)
-	serial += 1
+	var rid := ""
+	if pool:
+		rid = "APP-%d" % (applicants.size() + 1)
+	else:
+		serial += 1
+		rid = "PC-%04d" % serial
 	if lateral and years <= 0.0:
 		years = 3.0
-	var r := {"id": "PC-%04d" % serial, "badge": 1000 + serial * 7 + rng.randi_range(0, 6), "name": names.diverse_name(0.3),
-		"rank": rank, "echelon": "patrol", "hired_week": week, "status": "active", "out_until": 0, "years": years,
+	var r := {"id": rid, "badge": 1000 + serial * 7 + rng.randi_range(0, 6), "name": names.diverse_name(0.3),
+		"rank": rank, "echelon": "patrol", "hired_week": week, "status": "applicant" if pool else "active", "out_until": 0, "years": years,
 		"ech": Habits.vary(Habits.service_stats(years), rng), "good": [], "bad_traits": [], "traits": [],
 		"personality": "", "judgment": _trait(50.0 + 1.2 * years, 11.0), "temper": _trait(40.0, 15.0),
 		"integrity": _trait(65.0, 15.0), "exp": 1, "xp": 0, "trauma": 0.0, "ops": 0, "shots": 0, "hits": 0, "kills": 0,
-		"civ_hits": 0, "wounded": 0, "arrests": 0, "file": [], "lateral": lateral, "orders_broken": 0,
-		"kit": Equipment.default_kit(), "issued": 0, "tactical": false, "drill": 0, "course": "", "courses": []}
+		"civ_hits": 0, "wounded": 0, "arrests": 0, "misjudged": 0, "file": [], "lateral": lateral, "orders_broken": 0,
+		"kit": Equipment.default_kit(), "issued": 0, "tactical": false, "drill": 0, "course": "", "courses": [],
+		"queue": [], "course_until": 0}
 	r["issued"] = Equipment.cost(r["kit"])
 	# habits: the academy's twelve, sometimes one swapped for another Regular habit;
 	# years on the job add Regular habits, and the senior veterans some tactical ones
@@ -148,11 +175,69 @@ func hire(rank := "Officer", xp := 0, lateral := false, years := 0.0) -> Diction
 		r["traits"].append("TR02")
 	r["xp"] = xp
 	r["exp"] = tier_for(xp)
-	if years >= 1.0 and not lateral:
+	if pool:
+		r["file"].append({"week": week, "text": "Applied in week %d%s." % [week, " (lateral, %d years elsewhere)" % int(years) if lateral else ""]})
+	elif years >= 1.0 and not lateral:
 		r["file"].append({"week": week, "text": "%s, %d year%s on the job when you took command." % [rank, int(years), "" if int(years) == 1 else "s"]})
 	else:
 		r["file"].append({"week": week, "text": "Hired as %s%s." % [rank.to_lower(), " (lateral)" if lateral else ""]})
+	return r
+
+
+# ------------------------------------------------------------------ the applicant pool (Q2)
+## This week's applicants: two to four complete records, everything visible (echelon,
+## judgment, temper, integrity, personality and its habits, hearing traits, the pay
+## they will draw). The chief hires one; the rest walk at the end of the week.
+## Looking is free: the pool is rolled even while hiring is frozen.
+func _roll_applicants() -> void:
+	applicants = []
+	applicant_week = week
+	var n := 2 + rng.randi_range(0, 2)
+	for k in n:
+		if rng.randf() < 0.35:
+			var yrs := float(rng.randi_range(3, 6))
+			applicants.append(_roll_record("Corporal" if yrs >= 5.0 else "Officer", rng.randi_range(6, 14), true, yrs, true))
+		else:
+			applicants.append(_roll_record("Officer", 0, false, 0.0, true))
+
+
+## The pool, rolled fresh if the week has moved on since it was.
+func applicants_now() -> Array:
+	if applicant_week != week:
+		_roll_applicants()
+	return applicants
+
+
+## What hiring this applicant costs today: the academy place or the lateral signing,
+## plus the kit they are issued.
+static func applicant_cost(r: Dictionary) -> int:
+	return (Courses.LATERAL if r.get("lateral", false) else Courses.RECRUIT) + int(r.get("issued", 0))
+
+
+## Hire the chosen applicant: a rookie goes to the academy for two weeks, a lateral
+## hire reports at once, and the rest of the pool walks. Returns the new officer's
+## record, or {} if hiring is frozen or the applicant has already gone.
+func choose_applicant(r: Dictionary) -> Dictionary:
+	if frozen() or r.is_empty() or not applicants.has(r):
+		return {}
+	var walked: int = applicants.size() - 1
+	serial += 1
+	r["id"] = "PC-%04d" % serial
+	r["hired_week"] = week
+	if r.get("lateral", false):
+		r["status"] = "active"
+		r["out_until"] = 0
+		r["file"].append({"week": week, "text": "Hired laterally from the applicant pool."})
+		spend("Lateral hire: %s" % r["name"], Courses.LATERAL + int(r["issued"]))
+	else:
+		r["status"] = "academy"
+		r["out_until"] = week + Courses.RECRUIT_WEEKS
+		r["file"].append({"week": week, "text": "Hired from the applicant pool; at the academy until week %d." % r["out_until"]})
+		spend("Academy place: %s" % r["name"], Courses.RECRUIT + int(r["issued"]))
 	officers.append(r)
+	applicants = []
+	note("Hired %s %s from the applicant pool%s." % [r["rank"].to_lower(), r["name"],
+		(" (%d other applicant%s walked)" % [walked, "" if walked == 1 else "s"]) if walked > 0 else ""])
 	return r
 
 
@@ -383,6 +468,29 @@ const EVIDENCE_ORDER := ["video", "witness", "radio log", "heard", "none"]
 const CASE_WEEKS := 3           # open cases close themselves, without action, after this long
 
 
+## Q3: the officer's own account of it. Where there is evidence to check it against
+## (video or witnesses), a low-integrity officer's statement can simply not match;
+## at 65 integrity and above it always does. With nothing to check against, the
+## statement is untested and neither helps nor harms the officer (yet).
+static func statement_for(integrity: int, strength: String, roll: float) -> String:
+	if strength not in ["video", "witness"]:
+		return "untested"
+	var p := clampf((65.0 - float(integrity)) / 120.0, 0.0, 0.55)
+	return "disagrees" if roll < p else "matches"
+
+
+## Q3: what a squadmate who was there says in a colleague's case. A straight officer's
+## testimony corroborates the record and firms weak evidence up one step (never to
+## video: testimony is not footage); a crooked one's can contradict it, and evidence
+## nobody corroborates slips one step the other way (video itself never slips).
+static func testimony_for(integrity: int, roll: float) -> String:
+	if integrity >= 75:
+		return "corroborates" if roll < 0.8 else "unclear"
+	if integrity <= 30:
+		return "contradicts" if roll < 0.5 else "unclear"
+	return "corroborates" if roll < 0.35 else "unclear"
+
+
 func open_case(r: Dictionary, kind: String, text: String, strength: String, place: String) -> Dictionary:
 	case_serial += 1
 	var c := {"id": "IA-%03d" % case_serial, "officer": r["id"], "week": week, "kind": kind, "text": text,
@@ -585,8 +693,40 @@ func apply_result(w, map_name: String) -> Array:
 				if EVIDENCE_ORDER.find(String(f2["strength"])) < EVIDENCE_ORDER.find(best_ev):
 					best_ev = String(f2["strength"])
 			var txt: String = top["text"] + ((" (and %d more finding%s)" % [mine.size() - 1, "" if mine.size() == 2 else "s"]) if mine.size() > 1 else "")
+			# Q3: a squadmate who was there gives a statement in the case; the most
+			# upright one still standing is who internal affairs believes it can use
+			var wit: Dictionary = {}
+			for o3 in w.ops:
+				if o3.officer_id == "" or o3.officer_id == o.officer_id or o3.state == "dead" or o3.squad != o.squad or o.squad < 0:
+					continue
+				var wr: Dictionary = get_officer(o3.officer_id)
+				if not wr.is_empty() and (wit.is_empty() or int(wr["integrity"]) > int(wit["integrity"])):
+					wit = wr
+			var testimony := "none"
+			if not wit.is_empty():
+				testimony = testimony_for(int(wit["integrity"]), rng.randf())
+				if testimony == "corroborates":
+					best_ev = {"none": "heard", "heard": "witness"}.get(best_ev, best_ev)
+				elif testimony == "contradicts":
+					best_ev = {"witness": "heard", "heard": "none"}.get(best_ev, best_ev)
+			# and the officer's own statement, checked against what evidence there is
+			var statement: String = statement_for(int(r["integrity"]), best_ev, rng.randf())
+			if statement == "disagrees":
+				txt += " The officer's statement does not match the %s." % ("body camera" if best_ev == "video" else "witnesses")
 			var c := open_case(r, top["kind"], txt, best_ev, String(top["place"]))
 			c["findings"] = mine.size()
+			c["statement"] = statement
+			c["integrity"] = int(r["integrity"])
+			c["witness"] = wit.get("id", "")
+			c["testimony"] = testimony
+			if statement == "disagrees":
+				r["integrity"] = clampi(int(r["integrity"]) - 5, 10, 95)
+				r["file"].append({"week": week, "text": "Statement in %s contradicted by the %s; integrity now %d." % [c["id"],
+					"body camera" if best_ev == "video" else "witnesses", int(r["integrity"])]})
+				lines.append("%s's statement in %s does not match the %s." % [who, c["id"], "body camera" if best_ev == "video" else "witnesses"])
+			if not wit.is_empty() and testimony != "unclear":
+				wit["file"].append({"week": week, "text": "Statement in %s (%s): %s the record." % [c["id"], who,
+					"corroborated" if testimony == "corroborates" else "contradicted"]})
 			lines.append("Internal affairs: %s opened on %s (%s%s)." % [c["id"], who, CASE_KINDS.get(top["kind"], top["kind"]).to_lower(),
 				(", %d findings" % mine.size()) if mine.size() > 1 else ""])
 	# shared experience (v0.8): every pair that came back alive from the same squad
@@ -713,7 +853,36 @@ func to_data() -> Dictionary:
 		"bodycams": bodycams, "rng_state": str(rng.state), "officers": officers.duplicate(true),
 		"history": history.duplicate(true), "notes": notes.duplicate(true), "bonds": bonds.duplicate(),
 		"allocation": allocation, "balance": balance, "ledger": ledger.duplicate(true), "morale": morale,
-		"cases": cases.duplicate(true), "case_serial": case_serial, "deficit_weeks": deficit_weeks, "morale_home": morale_home}
+		"cases": cases.duplicate(true), "case_serial": case_serial, "deficit_weeks": deficit_weeks, "morale_home": morale_home,
+		"applicants": applicants.duplicate(true), "applicant_week": applicant_week}
+
+
+## One loaded record put back the way the game keeps it: JSON's floats back to ints,
+## and the fields older versions did not have. Officers and applicants are the same
+## shape of record, so both go through here.
+func _fix_record(r: Dictionary) -> Dictionary:
+	for k in ["badge", "hired_week", "out_until", "judgment", "temper", "integrity", "exp", "xp", "ops", "shots",
+			"hits", "kills", "civ_hits", "wounded", "arrests", "orders_broken", "drill", "misjudged"]:
+		r[k] = int(r.get(k, 0))
+	r["trauma"] = float(r.get("trauma", 0.0))
+	# version 1 (v0.5-v0.6) had no years of service, version 2 (v0.7) no kit
+	r["years"] = float(r.get("years", 0.0))
+	r["kit"] = Equipment.normalize(r.get("kit", Equipment.default_kit()))
+	r["kit"]["plates"] = int(r["kit"]["plates"])
+	for gk in r["kit"]["gear"]:
+		r["kit"]["gear"][gk] = int(r["kit"]["gear"][gk])
+	for fe in r["file"]:
+		fe["week"] = int(fe["week"])
+	# version 4 and earlier (before v0.8.5): the kit they carry counts as issued
+	r["issued"] = int(r.get("issued", Equipment.cost(r["kit"])))
+	r["tactical"] = bool(r.get("tactical", false))
+	r["course"] = String(r.get("course", ""))
+	r["courses"] = r.get("courses", [])
+	# version 5 and earlier (before the playtest pass) had no queue and one clock for
+	# injury and course alike: the course clock starts as that clock
+	r["queue"] = r.get("queue", [])
+	r["course_until"] = int(r.get("course_until", int(r["out_until"]) if r["course"] != "" else 0))
+	return r
 
 
 func from_data(d: Dictionary) -> bool:
@@ -730,26 +899,12 @@ func from_data(d: Dictionary) -> bool:
 	names = Names.new(seed_val * 7 + 3 + serial)
 	officers = []
 	for r0 in d["officers"]:
-		var r: Dictionary = r0
-		# JSON has no integers: restore them
-		for k in ["badge", "hired_week", "out_until", "judgment", "temper", "integrity", "exp", "xp", "ops", "shots",
-				"hits", "kills", "civ_hits", "wounded", "arrests", "orders_broken", "drill"]:
-			r[k] = int(r.get(k, 0))
-		r["trauma"] = float(r.get("trauma", 0.0))
-		# version 1 (v0.5-v0.6) had no years of service, version 2 (v0.7) no kit
-		r["years"] = float(r.get("years", 0.0))
-		r["kit"] = Equipment.normalize(r.get("kit", Equipment.default_kit()))
-		r["kit"]["plates"] = int(r["kit"]["plates"])
-		for gk in r["kit"]["gear"]:
-			r["kit"]["gear"][gk] = int(r["kit"]["gear"][gk])
-		for fe in r["file"]:
-			fe["week"] = int(fe["week"])
-		# version 4 and earlier (before v0.8.5): the kit they carry counts as issued
-		r["issued"] = int(r.get("issued", Equipment.cost(r["kit"])))
-		r["tactical"] = bool(r.get("tactical", false))
-		r["course"] = String(r.get("course", ""))
-		r["courses"] = r.get("courses", [])
-		officers.append(r)
+		officers.append(_fix_record(r0))
+	# version 5 and earlier had no applicant pool: this week's is rolled on demand
+	applicants = []
+	for a0 in d.get("applicants", []):
+		applicants.append(_fix_record(a0))
+	applicant_week = int(d.get("applicant_week", 0))
 	# version 3 and earlier (before v0.8) had no pair bonds: everyone starts as strangers
 	bonds = {}
 	for bk in d.get("bonds", {}):
@@ -771,6 +926,9 @@ func from_data(d: Dictionary) -> bool:
 		cases = d.get("cases", [])
 		for c in cases:
 			c["week"] = int(c["week"])
+			for ck in ["integrity", "findings"]:
+				if c.has(ck):
+					c[ck] = int(c[ck])
 	else:
 		allocation = int(round(payroll() * (1.0 + Courses.HEADROOM) / 500.0)) * 500
 		balance = Courses.RESERVE

@@ -477,9 +477,47 @@ func _train(r: Dictionary, cid: String) -> void:
 	_roster()
 
 
-func _hire(lateral: bool) -> void:
-	var r: Dictionary = main.campaign.dept.recruit(lateral)
-	flash = ("Hired %s %s." % [r["rank"], r["name"]]) if not r.is_empty() else "Hiring is frozen while the account is in the red."
+## This week's applicants (Q2): everyone who applied, warts and all — judgment,
+## temper and integrity where the chief can weigh them before anyone is hired.
+func _applicants() -> void:
+	var d = main.campaign.dept
+	var pool: Array = d.applicants_now()
+	_text(box, "APPLICANTS  ·  week %d%s" % [d.week, "  (hiring frozen: the account is in the red)" if d.frozen() else ""], INK, 12)
+	if pool.is_empty():
+		_text(box, "Nobody left to hire this week: the pool was taken from, or walked. A fresh pool applies next week.", GREY, 10)
+		return
+	_text(box, "Hire one and the rest walk. A recruit spends two weeks at the academy; a lateral hire has years elsewhere and reports at once. Whoever nobody hires walks at the end of the week.", GREY, 10)
+	for r in pool:
+		var v := _card(box)
+		var who: String = "%s %s  ·  Patrol  ·  %s" % [r["rank"], r["name"],
+			("lateral, %d years elsewhere, %s" % [int(r.get("years", 0)), Habits.EXP_NAMES[int(r["exp"])]]) if r.get("lateral", false) else "recruit (academy, two weeks)"]
+		_text(v, who, INK, 12).tooltip_text = UI.officer_file(r)
+		var traits: Array = []
+		for tr in r.get("traits", []):
+			traits.append(String(Habits.trait_info(tr).get("name", tr)))
+		var bad: Array = []
+		for b in r.get("bad_traits", []):
+			bad.append(String(Habits.bad_info(b).get("name", b)))
+		var plus: Array = []
+		for q in r["ech"].get("plus", []):
+			plus.append("+" + String(q))
+		for q2 in r["ech"].get("minus", []):
+			plus.append("-" + String(q2))
+		_text(v, "Judgment %d  ·  temper %d  ·  integrity %d%s%s%s" % [int(r["judgment"]), int(r["temper"]), int(r["integrity"]),
+			("  ·  " + ", ".join(traits)) if not traits.is_empty() else "",
+			("  ·  " + "  ".join(plus)) if not plus.is_empty() else "",
+			("  ·  personality: %s (%s)" % [String(r["personality"]).to_lower(), ", ".join(bad)]) if r["personality"] != "" else ""], GREY, 10)
+		var h := _h(v)
+		var rec: Dictionary = r
+		var hb := _btn(h, "Hire  ($%s, then $%s a week)" % [Department.money(Department.applicant_cost(r)), Department.money(Courses.pay(r))],
+			func(): _hire_applicant(rec))
+		hb.disabled = d.frozen()
+		hb.tooltip_text = String(UI.officer_file(r))
+
+
+func _hire_applicant(r: Dictionary) -> void:
+	var got: Dictionary = main.campaign.dept.choose_applicant(r)
+	flash = ("Hired %s %s." % [got["rank"], got["name"]]) if not got.is_empty() else "Hiring is frozen while the account is in the red."
 	main.ops_dept_changed()
 	_roster()
 
@@ -542,6 +580,16 @@ func _cases() -> void:
 		_text(v, "Judgment %d  ·  integrity %d  ·  %d earlier case%s" % [int(r.get("judgment", 0)), int(r.get("integrity", 0)),
 			d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size(),
 			"" if d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size() == 1 else "s"], GREY, 10)
+		var stmt: String = String(c.get("statement", ""))
+		if stmt == "disagrees":
+			_text(v, "The officer's statement does not match the %s. Clearing this reads as a cover-up, and it is the kind of detail that leaks." % ("body camera" if c["strength"] == "video" else "witnesses"), Ink.accent(0.9), 10)
+		elif stmt == "matches":
+			_text(v, "The officer's statement matches the record.", GREY, 10)
+		var wit: Dictionary = d.get_officer(String(c.get("witness", "")))
+		var tst: String = String(c.get("testimony", ""))
+		if not wit.is_empty() and tst in ["corroborates", "contradicts"]:
+			_text(v, "%s %s, who was there, %s the record in his statement." % [wit.get("rank", ""), wit.get("name", ""),
+				"corroborates" if tst == "corroborates" else "contradicts"], GREY, 10)
 		var h := _h(v)
 		var cid: String = c["id"]
 		_btn(h, "Clear", func(): _decide(cid, "clear"))
