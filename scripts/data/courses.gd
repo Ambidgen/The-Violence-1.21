@@ -40,9 +40,21 @@ const COURSES := {
 		"desc": "Works one personality bad habit out of the officer. Needs one to work on."},
 	"tactical": {"name": "Tactical team certification", "cost": 8500, "weeks": 2,
 		"desc": "Qualifies the officer for tactical kit (bangs, sting-balls, gas, the shield) and teaches two tactical habits. Needs two years on the job or Experience 2."},
-	"uof": {"name": "Use-of-force review", "cost": 2500, "weeks": 1,
-		"desc": "The discipline route: a week of review and retraining after a finding. Judgment +5."},
+	"uof": {"name": "Use-of-force review", "cost": 2500, "weeks": 1, "classroom": true,
+		"desc": "The discipline route: a week of review and retraining after a finding. Judgment +5. A classroom course: it can be taken while recovering from a wound."},
 }
+## Q9: three or more officers refresher-trained together pay three quarters each and
+## come back knowing each other a little better (a pair bond, as from an operation).
+const COHORT_N := 3
+const COHORT_DISCOUNT := 0.75
+const QUEUE_MAX := 3            # courses one officer can have waiting
+
+
+## The judgment term of the world's misjudge chance (world.gd, misjudge_p), before
+## stress, night, distance, phones and the rest move it: what the judgment course
+## buys down, shown where the course is chosen (Q6).
+static func misjudge_term(judgment: int) -> float:
+	return clampf(0.003 + 0.002 * (50.0 - float(judgment)), 0.0, 0.5)
 const COURSE_ORDER := ["cqb", "firearms", "judgment", "stress", "coaching", "tactical", "uof"]
 
 ## The habits a refresher teaches, in order: a Regular's set the academy leaves out, then

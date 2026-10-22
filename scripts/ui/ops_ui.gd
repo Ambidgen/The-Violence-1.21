@@ -384,7 +384,10 @@ const STATUS_WORDS := {"injured": "out injured until week %d", "training": "on a
 
 func _status_of(r: Dictionary, busy: Dictionary) -> String:
 	if STATUS_WORDS.has(r["status"]):
-		return STATUS_WORDS[r["status"]] % int(r["out_until"])
+		var s: String = STATUS_WORDS[r["status"]] % int(r["out_until"])
+		if r["status"] == "injured" and String(r.get("course", "")) != "":
+			s += ", on a classroom course"
+		return s
 	match r["status"]:
 		"dead":
 			return "killed"
@@ -446,24 +449,50 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 	_text(v, "%d good habits%s. Personality: %s. Trauma %.1f. Courses: %s." % [good.size(),
 		", tactical certified" if r.get("tactical", false) else "", String(r["personality"]) if r["personality"] != "" else "none",
 		float(r["trauma"]), ", ".join(r.get("courses", []).map(func(c): return Courses.COURSES[c]["name"])) if not r.get("courses", []).is_empty() else "none"], INK, 11)
-	if r["status"] == "active" and not busy.has(r["id"]):
-		_text(v, "TRAINING (the officer is off the board for the course)", GREY, 10)
+	if r["status"] in ["active", "injured", "training", "academy"]:
+		var cur: String = String(r.get("course", ""))
+		var q: Array = r.get("queue", [])
+		_text(v, "TRAINING%s%s" % [
+			("  ·  on the %s course until week %d" % [Courses.COURSES[cur]["name"].to_lower(), int(r.get("course_until", 0))]) if cur != "" else "",
+			("  ·  queued: " + ", ".join(q.map(func(c): return Courses.COURSES[c]["name"].to_lower()))) if not q.is_empty() else ""], GREY, 10)
+		for qc in q:
+			var hq := _h(v)
+			_lab(hq, "queued: %s" % Courses.COURSES[qc]["name"], GREY, 10)
+			var qid: String = qc
+			_btn(hq, "drop", func(): main.campaign.dept.unqueue(r, qid); main.ops_dept_changed(); _roster())
 		for cid in Courses.COURSE_ORDER:
 			if cid == "uof":
 				continue
 			var c: Dictionary = Courses.COURSES[cid]
+			var classroom: bool = bool(c.get("classroom", false))
+			var can_now: bool = cur == "" and not busy.has(r["id"]) and (r["status"] == "active" or (r["status"] == "injured" and classroom))
 			var why: String = Courses.blocked(r, cid)
-			if why == "" and d.frozen():
-				why = "account in the red"
+			if why == "" and can_now and d.frozen():
+				why = "account in the red (it can still be queued)"
+				can_now = false
 			var h := _h(v)
-			var cb := _btn(h, "%s  $%s  %dw" % [c["name"], Department.money(int(c["cost"])), int(c["weeks"])], func(): _train(r, cid))
-			cb.disabled = why != ""
+			var cb := _btn(h, "%s: %s  $%s  %dw%s" % ["Send" if can_now else "Queue", c["name"], Department.money(int(c["cost"])), int(c["weeks"]),
+				"  (classroom)" if classroom else ""], func(): _train(r, cid))
+			cb.disabled = why != "" and not (why.begins_with("account in the red") and q.size() < Courses.QUEUE_MAX)
+			if q.size() >= Courses.QUEUE_MAX and not can_now:
+				cb.disabled = true
+				why = "queue full"
 			cb.add_theme_font_size_override("font_size", 11)
-			cb.tooltip_text = String(c["desc"]) + (("\nNot now: " + why) if why != "" else "")
-			if why != "":
+			var tip: String = String(c["desc"])
+			if cid == "judgment":
+				tip += "\nAt judgment %d the base chance of misjudging a civilian is %.2f%% per judgment (before stress, night, phones and range); at %d it is %.2f%%." % [
+					int(r["judgment"]), Courses.misjudge_term(int(r["judgment"])) * 100.0,
+					mini(90, int(r["judgment"]) + 6), Courses.misjudge_term(mini(90, int(r["judgment"]) + 6)) * 100.0]
+			if not can_now and why == "":
+				tip += "\nQueued courses start themselves when the officer can take them, and are paid for then."
+			cb.tooltip_text = tip + (("\nNot now: " + why) if why != "" else "")
+			if why != "" and cb.disabled:
 				_lab(h, why, GREY, 10)
-	elif r["status"] == "active":
-		_text(v, "Committed this week: no courses until the week ends.", GREY, 10)
+		if r["status"] == "active" and cur == "" and not busy.has(r["id"]):
+			var hc := _h(v)
+			var coh := _btn(hc, "Refresher with a bonded cohort (3+ at 3/4 cost)", func(): _cohort(r))
+			coh.add_theme_font_size_override("font_size", 11)
+			coh.tooltip_text = "Send this officer and up to three available colleagues he has served with on the close-quarters refresher together: three or more pay three quarters each, and every pair gains a bond (squad cohesion)."
 	var h2 := _h(v)
 	var fb := _btn(h2, "Dismiss ($%s severance)" % Department.money(Courses.pay(r) * Courses.SEVERANCE_WEEKS), func(): _dismiss(r))
 	fb.add_theme_font_size_override("font_size", 11)
@@ -471,8 +500,30 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 
 
 func _train(r: Dictionary, cid: String) -> void:
-	var why: String = main.campaign.dept.enrol(r, cid)
-	flash = ("%s %s is on the %s course." % [r["rank"], r["name"], Courses.COURSES[cid]["name"].to_lower()]) if why == "" else ("Not possible: " + why + ".")
+	var res: Dictionary = main.campaign.dept.enrol_or_queue(r, cid)
+	if bool(res.get("ok", false)):
+		flash = ("%s %s is on the %s course." % [r["rank"], r["name"], Courses.COURSES[cid]["name"].to_lower()]) if res.get("mode", "") == "now" \
+			else ("%s queued for %s %s: it starts when he can take it." % [Courses.COURSES[cid]["name"], r["rank"], r["name"]])
+	else:
+		flash = "Not possible: " + String(res.get("why", "")) + "."
+	main.ops_dept_changed()
+	_roster()
+
+
+## The cohort refresher (Q9): this officer and the available colleagues he is most
+## bonded with, refresher-trained together at the cohort rate.
+func _cohort(r: Dictionary) -> void:
+	var d = main.campaign.dept
+	var busy: Dictionary = main.campaign.committed()
+	var mates: Array = d.officers.filter(func(x): return x["id"] != r["id"] and x["status"] == "active" and String(x.get("course", "")) == "" \
+		and not busy.has(x["id"]) and Courses.blocked(x, "cqb") == "")
+	mates.sort_custom(func(a, b): return d.bond(r["id"], a["id"]) > d.bond(r["id"], b["id"]) if d.bond(r["id"], a["id"]) != d.bond(r["id"], b["id"]) else int(a["xp"]) > int(b["xp"]))
+	var group: Array = [r] + mates.slice(0, 3)
+	var res: Dictionary = d.enrol_cohort(group)
+	if bool(res.get("ok", false)):
+		flash = "Cohort refresher: %s ($%s%s)." % [", ".join(res["started"]), Department.money(int(res["cost"])), ", at the cohort rate" if res["discounted"] else ""]
+	else:
+		flash = "No cohort: " + String(res.get("why", "")) + "."
 	main.ops_dept_changed()
 	_roster()
 
@@ -594,7 +645,8 @@ func _cases() -> void:
 		var cid: String = c["id"]
 		_btn(h, "Clear", func(): _decide(cid, "clear"))
 		var rb := _btn(h, "Review ($%s)" % Department.money(int(Courses.COURSES["uof"]["cost"])), func(): _decide(cid, "retrain"))
-		rb.disabled = r.get("status", "") != "active" or d.frozen() or main.campaign.committed().has(c["officer"])
+		rb.disabled = r.get("status", "") not in ["active", "injured"] or d.frozen() or main.campaign.committed().has(c["officer"])
+		rb.tooltip_text = "A classroom course: a wounded officer can take the review while recovering."
 		_btn(h, "Suspend", func(): _decide(cid, "suspend"))
 		_btn(h, "Dismiss", func(): _decide(cid, "fire"))
 	var closed: Array = d.cases.filter(func(c): return c["status"] == "closed")

@@ -383,25 +383,135 @@ func settle_kits() -> int:
 	return net
 
 
-## Send an officer on a course. Returns "" or why not.
+## Send an officer on a course now. A classroom course (judgment, the use-of-force
+## review) can be taken from a hospital bed: the wound keeps its own clock
+## (out_until) and the course keeps another (course_until) (Q9). Returns "" or why not.
 func enrol(r: Dictionary, cid: String) -> String:
 	if not Courses.COURSES.has(cid):
 		return "no such course"
-	if r["status"] != "active":
+	var c: Dictionary = Courses.COURSES[cid]
+	if String(r.get("course", "")) != "":
+		return "already on a course"
+	if r["status"] != "active" and not (r["status"] == "injured" and bool(c.get("classroom", false))):
 		return "not on duty"
 	var why := Courses.blocked(r, cid)
 	if why != "":
 		return why
-	var c: Dictionary = Courses.COURSES[cid]
 	if frozen():
 		return "the account is in the red"
 	spend("%s: %s" % [c["name"], r["name"]], int(c["cost"]))
-	r["status"] = "training"
+	return _start_course(r, cid)
+
+
+## Put an officer on a paid-for course: the clocks and the file line.
+func _start_course(r: Dictionary, cid: String) -> String:
+	var c: Dictionary = Courses.COURSES[cid]
 	r["course"] = cid
-	r["out_until"] = week + int(c["weeks"])
-	r["file"].append({"week": week, "text": "On the %s course until week %d." % [c["name"].to_lower(), r["out_until"]]})
+	r["course_until"] = week + int(c["weeks"])
+	if r["status"] == "active":
+		r["status"] = "training"
+		r["out_until"] = int(r["course_until"])
+	r["file"].append({"week": week, "text": "On the %s course until week %d%s." % [c["name"].to_lower(), int(r["course_until"]),
+		", while recovering" if r["status"] == "injured" else ""]})
 	shift_morale(1)
 	return ""
+
+
+## Queue a course behind whatever the officer is doing (Q9): it starts itself in
+## next_week when they can take it, and is paid for then. Returns "" or why not.
+func queue_course(r: Dictionary, cid: String) -> String:
+	if not Courses.COURSES.has(cid):
+		return "no such course"
+	if r["status"] in ["dead", "fired", "resigned", "suspended"]:
+		return "not with the department"
+	var q: Array = r.get("queue", [])
+	if q.size() >= Courses.QUEUE_MAX:
+		return "the queue is full (%d waiting)" % Courses.QUEUE_MAX
+	var why := Courses.blocked(r, cid)
+	if why != "":
+		return why
+	q.append(cid)
+	r["queue"] = q
+	r["file"].append({"week": week, "text": "Queued for the %s course." % Courses.COURSES[cid]["name"].to_lower()})
+	return ""
+
+
+## Take a queued course off again.
+func unqueue(r: Dictionary, cid: String) -> void:
+	var q: Array = r.get("queue", [])
+	q.erase(cid)
+	r["queue"] = q
+
+
+## The roster's one button: start the course if the officer can take it today,
+## queue it if they cannot (on a course, in hospital with a range course, or the
+## money is not there this week). Returns {ok, mode: "now"|"queued", why}.
+func enrol_or_queue(r: Dictionary, cid: String) -> Dictionary:
+	if not Courses.COURSES.has(cid):
+		return {"ok": false, "mode": "", "why": "no such course"}
+	var c: Dictionary = Courses.COURSES[cid]
+	var can_now: bool = String(r.get("course", "")) == "" and (r["status"] == "active"
+		or (r["status"] == "injured" and bool(c.get("classroom", false))))
+	if can_now:
+		var why: String = enrol(r, cid)
+		if why == "":
+			return {"ok": true, "mode": "now", "why": ""}
+		if why != "the account is in the red":
+			return {"ok": false, "mode": "now", "why": why}
+	var why2: String = queue_course(r, cid)
+	return {"ok": why2 == "", "mode": "queued", "why": why2}
+
+
+## Send a group on the close-quarters refresher together (Q9): three or more who can
+## start today pay three quarters each, and every pair of them gains a bond, as if
+## they had come back from an operation in the same squad (cohesion in squads.gd).
+## Returns {ok, started: [names], discounted, cost, why}.
+func enrol_cohort(members: Array, cid := "cqb") -> Dictionary:
+	if cid != "cqb" or not Courses.COURSES.has(cid):
+		return {"ok": false, "started": [], "discounted": false, "cost": 0, "why": "the cohort discount is for the close-quarters refresher"}
+	if frozen():
+		return {"ok": false, "started": [], "discounted": false, "cost": 0, "why": "the account is in the red"}
+	var elig: Array = []
+	for r in members:
+		if r["status"] == "active" and String(r.get("course", "")) == "" and Courses.blocked(r, cid) == "" and not elig.has(r):
+			elig.append(r)
+	if elig.is_empty():
+		return {"ok": false, "started": [], "discounted": false, "cost": 0, "why": "nobody picked can start the refresher this week"}
+	var c: Dictionary = Courses.COURSES[cid]
+	var discounted: bool = elig.size() >= Courses.COHORT_N
+	var each: int = int(round(int(c["cost"]) * (Courses.COHORT_DISCOUNT if discounted else 1.0)))
+	var names2: Array = []
+	for r2 in elig:
+		spend("%s (cohort): %s" % [c["name"], r2["name"]], each)
+		_start_course(r2, cid)
+		names2.append(String(r2["name"]))
+	if discounted:
+		for i in elig.size():
+			for j in range(i + 1, elig.size()):
+				var key := bond_key(elig[i]["id"], elig[j]["id"])
+				bonds[key] = int(bonds.get(key, 0)) + 1
+		note("A cohort of %d took the %s together at three quarters' cost, and bonded over it." % [elig.size(), c["name"].to_lower()])
+	return {"ok": true, "started": names2, "discounted": discounted, "cost": each * elig.size(), "why": ""}
+
+
+## How much schooling the roster is carrying, and how much it could start today —
+## the bottleneck, readable at a glance (Q9).
+func training_state() -> Dictionary:
+	var st := {"on_course": 0, "queued": 0, "officers_queued": 0, "startable": 0, "startable_injured": 0}
+	for r in officers:
+		if r["status"] in ["dead", "fired", "resigned"]:
+			continue
+		if String(r.get("course", "")) != "":
+			st["on_course"] += 1
+		elif r["status"] == "active":
+			st["startable"] += 1
+		elif r["status"] == "injured":
+			st["startable_injured"] += 1
+		var qn: int = (r.get("queue", []) as Array).size()
+		st["queued"] += qn
+		if qn > 0:
+			st["officers_queued"] += 1
+	return st
 
 
 ## A course ends: what it teaches.
@@ -520,7 +630,9 @@ func decide(c: Dictionary, decision: String) -> String:
 			r["file"].append({"week": week, "text": "%s: cleared." % c["id"]})
 			shift_morale(1)
 		"retrain":
-			if r["status"] != "active":
+			# the use-of-force review is a classroom course: a wounded officer can
+			# answer for a finding from the ward (Q9)
+			if r["status"] not in ["active", "injured"]:
 				return ""
 			if enrol(r, "uof") != "":
 				return ""
@@ -747,6 +859,10 @@ func apply_result(w, map_name: String) -> Array:
 	spend("Overtime, operation %d (%d officers)" % [ops_run, n_off], ot)
 	spend("Restock, operation %d" % ops_run, int(round(restock)))
 	lines.append("Cost: $%s overtime, $%s to restock. Account: $%s." % [money(ot), money(int(round(restock))), money(balance)])
+	var ts: Dictionary = training_state()
+	lines.append("Training: %d on a course, %d queued; %d officer%s could start one now%s." % [int(ts["on_course"]), int(ts["queued"]),
+		int(ts["startable"]) + int(ts["startable_injured"]), "" if int(ts["startable"]) + int(ts["startable_injured"]) == 1 else "s",
+		(" (%d of them a classroom course from a ward bed)" % int(ts["startable_injured"])) if int(ts["startable_injured"]) > 0 else ""])
 	var s: Dictionary = data.get("summary", {})
 	history.append({"week": week, "op": ops_run, "map": map_name, "seed": w.seed_used, "summary": s.duplicate(true)})
 	if history.size() > 200:
@@ -788,6 +904,25 @@ func next_week() -> Array:
 					lines.append("%s %s is back from suspension." % [r["rank"], r["name"]])
 		if r["status"] not in ["dead", "fired", "resigned"]:
 			r["trauma"] = maxf(0.0, float(r["trauma"]) - 0.5)
+	# Q9: queued courses start themselves as soon as the officer can take them;
+	# one that has stopped making sense (the habit coached by other means, judgment
+	# already at the cap) comes off the queue with a line saying why
+	for r2 in officers:
+		while String(r2.get("course", "")) == "" and not (r2.get("queue", []) as Array).is_empty():
+			var cid: String = String(r2["queue"][0])
+			var cc: Dictionary = Courses.COURSES.get(cid, {})
+			if cc.is_empty():
+				r2["queue"].pop_front()
+				continue
+			var can: bool = r2["status"] == "active" or (r2["status"] == "injured" and bool(cc.get("classroom", false)))
+			if not can or frozen():
+				break
+			r2["queue"].pop_front()
+			var whyq: String = enrol(r2, cid)
+			if whyq == "":
+				lines.append("%s %s starts the %s course (it was queued)." % [r2["rank"], r2["name"], cc["name"].to_lower()])
+			else:
+				lines.append("%s %s comes off the %s queue: %s." % [r2["rank"], r2["name"], cc["name"].to_lower(), whyq])
 	# cases nobody decided close themselves
 	for c in cases:
 		if c["status"] == "open" and week - int(c["week"]) >= CASE_WEEKS:
