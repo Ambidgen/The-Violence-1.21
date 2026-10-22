@@ -2,6 +2,56 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased: doors, and the path through them
+
+A pass over the two systems that meet at a doorway: the 0.25 m navigation lattice and the
+shut-door leaves. Both had faults that only show at an opening — a door is the narrowest
+thing anyone walks through, so it is where a smoothing leg that is a few centimetres wrong
+becomes an officer inside the frame.
+
+- **The navigator smoothed paths through walls.** `line_ok()` — the test that decides
+  whether a leg from one waypoint to another can replace the stair-step cell path —
+  sampled one grid cell every 0.25 m and asked whether that cell was walkable. A leg could
+  cross the *corner* of a blocked cell between two samples and still be accepted. Since
+  the walkable mask is already inflated by the 0.30 m body, that put the body inside a
+  wall, a door jamb or a wardrobe: measured over the twelve maps, up to 11 cm of a 0.30 m
+  body (p95 9 cm), and 59 of the 175 door crossings in the suite clipped geometry. The
+  leg is now tested against the obstacles themselves: `Geom.path_clear_leg()` grows each
+  obstacle by the body's radius and asks whether the segment reaches it (`seg_rect_dist()`
+  is the exact segment-to-rectangle distance; `path_clear()` is the same test with no
+  endpoint allowance, and is what the gate uses). Measured after: 0 crossings clip and the
+  worst overlap anywhere is 1 cm, with the paths all but unchanged — 2 cm longer on
+  average (one 22 cm, a few shorter), a third of a waypoint more, which is the price of
+  not cutting the corner. Smoothing costs more per accepted leg — the clearance test asks
+  nine buckets instead of one — but it only runs when a goal changes, or once every 1.5 s
+  for an officer who is stuck. `candidates()` gained a halo: a bucket's edge is where an
+  obstacle is filed, not where it is, so a query that has to be sure it holds every
+  obstacle within 0.3 m of a line cannot trust the DDA walk alone (it missed three legs in
+  3,300 across three maps). City lots walk through the same navigator, one lattice per
+  building template, so they get this with no further work.
+- **Officers stopped to open doors they were only walking past.** A shut door's leaf was
+  grown by the body's radius on every side — including out along the opening, past the
+  jamb — and the probe asked only whether that grown box lay ahead. In a 2 m hall, walking
+  along the wall side, or round a corner past a closed bathroom door, the officer was
+  caught 0.10-0.28 m off the door's face, stopped dead and set to opening it. 152 of the
+  175 doors did it. `Geom.leaf_in_way()` now wants the move to close on the leaf's face or
+  cross it: walking along a shut door leaves it alone, walking into it still stops the
+  officer 0.25 m short and works the door.
+- **A squad queued at a locked door searched the building again every 1.5 s.** `move_to()`
+  calls a path bad when an officer has not moved in 1.5 s; standing at a shut door he is
+  not moving either, so every officer in the stack re-ran A* — and re-pathing cannot help,
+  because the door is the problem. `world.door_ahead()` excuses it: the search now happens
+  when the goal changes, not forty times a minute per officer.
+- **New gate:** `tests/nav_door_test.gd` walks every door on every map from the floor of
+  one room to the floor of the other (from a corner of the room, so the approach turns into
+  the doorway), and fails if the body does not fit along the path, if the door is not
+  joined to its rooms, or if a shut leaf stops someone walking past it. It is the
+  regression for both faults above. Run over the twelve maps through the raster probe in
+  `tools/` — `nav_probe.py` and `level_port.py`, a throwaway port of the level builder
+  kept for measuring the lattice without Godot, diagnostic and not part of the build — it
+  reports 175 doors, 59 clipping crossings before the fix and 0 after, and 152 doors whose
+  shut leaf stopped someone walking past it, 0 after.
+
 ## Unreleased: the short cutscenes
 
 Fourteen in-game interstitials, 5-10 s each, in the same Remotion project as the opening

@@ -345,3 +345,44 @@ chosen.
     available in this environment, so the headless suites are not yet run; the
     determinism fixture will need `-- --write` once, per the CHANGELOG note.
   - Remaining: Q2/Q3, Q5, Q4, Q10, Q8, Q9, Q7 in the build order above.
+- **2026-10-22 — doorway pathfinding pass (separate from the ten questions).** A bug hunt
+  through the two systems that meet at a door: the 0.25 m navigation lattice
+  (`scripts/sim/nav.gd`) and the shut-door leaves (`scripts/sim/geom.gd`). Three faults,
+  one new gate, and a way to measure them without an engine.
+  - **A. Smoothing cut corners the cell grid could not see.** `line_ok()` sampled one cell
+    per 0.25 m of a leg, so a leg could cross the corner of a blocked cell between two
+    samples. Because the walkable mask is already inflated by the 0.30 m body, that put the
+    body *inside* a wall or a door jamb: up to 11 cm of it (p95 9 cm), and **59 of the 175
+    door crossings on the twelve maps clipped geometry**. `line_ok()` now ends in
+    `geom.path_clear_leg(a, b, RADIUS)` — the leg is tested against the obstacles
+    themselves, each grown by the body's radius (`Geom.seg_rect_dist()` is the exact
+    segment-to-rectangle distance). After: **0 / 175 clip**, worst overlap 1 cm, paths
+    essentially unchanged (2 cm longer on average, a third of a waypoint more).
+    `candidates()` grew a `halo` parameter because a 1 m bucket's edge is where an obstacle
+    is filed, not where it is; the plain DDA walk alone missed three legs in 3,300.
+  - **B. Officers stopped to open doors they were walking past.** `leaf_in_way()` grew each
+    shut leaf by 0.25 m on *every* side — including out along the opening, past the jamb —
+    and asked only whether that box lay ahead. Walking down a 2 m hall, or round a corner
+    past a closed bathroom door, caught the body 0.10-0.28 m off the door's face and set it
+    opening a door it was not going through: **152 of the 175 doors did it.** The test now
+    requires the move to close on the leaf's thin-axis face or cross it. After: 0 / 175
+    false stops; head-on approaches and bodies pressed on a leaf still stop and still work
+    the door.
+  - **C. A squad at a locked door re-searched the building every 1.5 s.** `move_to()` calls
+    a path bad when its owner has not moved in 1.5 s, which is exactly what standing at a
+    shut door looks like, so every officer in the stack ran A* again — and A* cannot help.
+    New `world.door_ahead()` excuses the stuck test while a shut leaf is in the way.
+  - **Gate:** `tests/nav_door_test.gd` (SceneTree, `-s` runnable, `--map=N` for one map).
+    For every door it finds free floor on both sides (4.8 m in, scoring depth x lateral and
+    checking the room), paths between them, and fails if any leg puts the body through
+    geometry, if the crossing is implausibly long, or if a shut leaf both fails to stop a
+    body going through it and stops one walking past.
+  - **Measurement without an engine.** The numbers above come from `tools/nav_probe.py` and
+    `tools/level_port.py`, hand ports of the nav raster and of the level/wall/door builder,
+    run over the twelve shipped maps (12 maps, 175 doors, ~20 s). They are diagnostics, not
+    the build: they will drift from the GDScript and are worth nothing against a real
+    engine. Open risk: no Godot binary is reachable from this sandbox (release downloads
+    redirect to a host outside the allow-list), so the GDScript has been checked only by
+    `gdparse` (all four changed files parse; repo-wide parse-failure count still 3, the
+    same pre-existing gdtoolkit lambda limits). The next runnable step is
+    `godot --headless --path . -s res://tests/nav_door_test.gd`.
