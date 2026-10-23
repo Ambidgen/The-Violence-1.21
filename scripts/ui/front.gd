@@ -129,15 +129,15 @@ func show_title() -> void:
 	rule.color = Ink.accent(0.9)
 	rule.custom_minimum_size = Vector2(560, 5)
 	v.add_child(rule)
-	var tag := _label(v, "Forty weeks to the election. Every operation is a plan until it meets a room.", 16, Ink.DARK)
+	var tag := _label(v, "A 40-week procedural. Choose the calls; the city keeps the record.", 16, Ink.DARK)
 	tag.custom_minimum_size = Vector2(620, 0)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 30)
 	v.add_child(gap)
 	var c: Dictionary = _campaign_summary()
 	if c.get("exists", false):
-		_menu_btn(v, "Continue    ·    %s" % c["text"], func(): _continue())
-	_menu_btn(v, "New campaign", func(): _new_campaign_ask())
+		_menu_btn(v, "Continue story    ·    %s" % c["text"], func(): _continue())
+	_menu_btn(v, "New story", func(): _new_campaign_ask())
 	var gap2 := Control.new()
 	gap2.custom_minimum_size = Vector2(0, 12)
 	v.add_child(gap2)
@@ -161,7 +161,7 @@ func _campaign_summary() -> Dictionary:
 	if c == null or not load("res://scripts/campaign/save_file.gd").exists(Campaign.SAVE_PATH):
 		return {}
 	if c.over():
-		return {"exists": true, "text": "election night (the campaign is over)"}
+		return {"exists": true, "text": "election night · the file is closed"}
 	return {"exists": true, "text": "week %d of %d, %d officers fit, account $%s" % [c.week(), c.WEEKS, c.dept.available().size(), c.dept.money(c.dept.balance)]}
 
 
@@ -176,13 +176,13 @@ func _new_campaign_ask() -> void:
 		_new_campaign()
 		return
 	screen = "confirm_new"
-	var v := _page("A new campaign", 620.0)
-	_label(v, "Your campaign (%s) has one save. A new campaign replaces it for good." % c["text"], 14, Ink.INK, true)
+	var v := _page("A new story", 620.0)
+	_label(v, "The current file (%s) has one save. Starting over replaces it." % c["text"], 14, Ink.INK, true)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	v.add_child(h)
 	var yes := Button.new()
-	yes.text = "Start a new campaign"
+	yes.text = "Start a new story"
 	yes.pressed.connect(func(): _new_campaign())
 	h.add_child(yes)
 	var no := Button.new()
@@ -196,7 +196,7 @@ func _new_campaign() -> void:
 	main.ops_new_campaign()
 	var begin := func():
 		main.ops_open()
-		main.ops_ui.show_board(["Week 1. The department is yours."])
+		main.ops_ui.show_board()
 	# 1.2: the opening cutscenes first, unless turned off in Settings
 	if bool(Settings.get_v("intro")) and main.cutscene != null and main.cutscene.available():
 		main.play_opening(begin)
@@ -340,57 +340,55 @@ func show_credits(from: String) -> void:
 
 # ------------------------------------------------------------------ the manual
 const MANUAL := [
-	["The job", """You are the new chief of the Port Carrick Police Department. The city is broke, its mills are closing, and there is an election in forty weeks. Whoever wins decides what happens to you.
+	["The job", """You are Port Carrick's new police chief. Before the appointment, you were deputy chief. You signed the Bridge Street eviction order; the outgoing chief gave the briefing. Dana Okonjo-Vale remembers who signed and who briefed it.
 
-Each week the operations board fills with situations: warrants, crew houses, barricaded suspects, hostage takings and, more often as the election nears, public rallies. You decide which to answer, who to send and what they are allowed to do. Then the operation plays out on its own. You watch; you do not steer.
+For forty weeks, the board gives you more calls than you can answer. Choose which to take, who to send and what orders they carry. Once an operation starts, your officers act on their own. You watch the plan meet the room.
 
-Everything the department does is remembered: by its officers, its budget, the press, the city's four power brokers and three candidates. There is no perfect playthrough. Every decision is a trade."""],
-	["A week", """The board shows this week's situations. For each: its type, its ward, how much trust that ward has in the police, how many people are watching (visibility), and how much time you have.
+The city keeps its own record: the roster, the budget, the press, four allies, three candidates and six wards. There is no clean run. There are choices—and people who live with them."""],
+	["A week", """The board brings two or three calls and, more often as the election nears, a public event. Each file names a type, a ward, the ward's trust in police, how many people may be watching and any time pressure.
 
-Officers sent to one situation, or out canvassing for tips, cannot go to another that week. With twenty officers and three or four situations, you will not answer everything. What you leave is written down, and some of it comes back.
+An officer sent to a call—or out canvassing—cannot answer another that week. With twenty officers and more calls than teams, some work will wait. The city records what you leave unattended.
 
-When you are done, End week. Pay goes out, the city's allocation comes in, wounds heal, courses finish, and a new board fills. The front page of the Carrick Ledger tells you what the city made of last week."""],
-	["Planning an operation", """Brief and plan opens three tabs.
+End the week when you are ready. Pay goes out, the city's allocation comes in, wounds heal and courses finish. The Carrick Ledger prints its account of the week."""],
+	["Planning an operation", """Brief and Plan has three tabs.
 
-Briefing: what is known, what is estimated and how sure, and the tips. It is never complete. Canvassing sends an officer for two more tips and costs you that officer for the week.
+[Briefing] separates confirmed facts from estimates and shows the source and confidence of each tip. Canvassing brings two more tips; the officer is gone for the week.
 
-Force: who goes, in up to five squads of up to six, and what each carries. Kit is bought from the budget. Tactical gear (bangs, gas, the shield) needs tactical training.
+[Force] assigns up to thirty officers to five squads. Kit comes from the budget. Some equipment requires tactical training.
 
-Orders: each squad's objectives (clear, arrest, rescue, contain, post, patrol) and constraints (avoid a room, consolidate, an entry door, a phase line). The number of orders a squad can follow depends on the experience of its leader.
+[Orders] sets each squad's objectives—clear, arrest, rescue, contain, post or patrol—and its limits. A leader's experience determines how many orders the squad can follow.
 
-On the map the plan is one clean red line. It will not survive the house. Suggest a plan gives you a sensible start; it will not send fewer than four officers through a door. The suggestion never spends an estimate for you: which door, the lookout, the guessed room, how many civilians are inside — those stay yours to act on, and the debrief will show what you changed and whether it held. Settings has a veteran chief mode with no suggestion at all.
+The map shows a clean red line. The building will not stay clean. Suggest a Plan gives you a starting point, not a decision: you choose the entry, rooms, people and risks. The debrief shows what changed and what held. Veteran Chief mode removes the suggestion.
 
-At a rally the briefing prices the chatter: how likely an attack is, and how sure the word is. Ten officers is the standing answer; on lowered chatter six suffice, the suggestion sizes itself by the reading, and static duty bills at half overtime. Fifteen quiet minutes is the cheapest night you will ever buy, until it is the wrong rally."""],
-	["The operation", """The operation runs hands-off, as your officers would run it: their habits, their training, their stress and their judgment. Under police rules every person seen is judged before an officer may fire; suspects can give up, and officers cuff them.
+At a rally, the briefing prices the threat estimate. Ten officers is the standing plan; lowered chatter may justify six. Static posts cost half overtime, but the clock still runs. The estimate can be wrong."""],
+	["The operation", """Your officers act on training, habits, stress and judgment. Under police rules, an officer must identify a threat before firing. A suspect may give up; officers can make an arrest.
 
-You see what your officers see: their view cones, live. Everyone else appears where the radio last called them out.
+Fog of war shows what your officers can see. Everyone else remains at the radio's last reported position.
 
-Space pauses. 1-7 set the speed. The slider rewinds what you have seen; the operation itself never goes back. Abort withdraws every squad: a failure, but a failure with everyone alive always scores better than one with deaths."""],
-	["Afterwards", """The debrief scores the result and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody.
+Space pauses the operation. Keys 1–7 set speed. The slider replays what you have seen; the operation never rewinds. Abort orders every squad to withdraw. The call still counts as a failure, but a withdrawal with everyone alive scores better than a loss of life."""],
+	["Afterwards", """The debrief gives the result, each squad's work, the timeline, every officer and every finding. Findings list their evidence: body camera, phone video, witness or no source.
 
-Findings that name an officer open an internal affairs case. The officer gives a statement — and what they say may or may not match the bodycam. Integrity is the stat that decides, and being caught disagreeing with the tape costs more of it. The highest-integrity squadmate still standing gives testimony, which can firm up thin evidence or shake it, though video never slips. All of it is written on the case. The same stat prices the leak: clearing a case over video leaks about half the time, more when the named officer's integrity is low or their statement was already caught out, and the district attorney reads those worst of all. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
+A finding tied to an officer opens an Internal Affairs case. The officer gives a statement. A squadmate may give testimony. Either can agree with the evidence or contradict it; video does not change. You can clear the case, order a use-of-force review, suspend the officer or dismiss them. The union watches discipline. The coalition and the district attorney watch what you clear.
 
-What civilians suffered at police hands becomes a story: next week if there was video or a crowd, months later if nobody was watching, and sometimes never. Lawsuits settle out of your budget weeks after."""],
-	["The department", """The roster: open an officer's file to send them on a course (close quarters, firearms, judgment, stress, coaching, tactical certification) or to dismiss them. Hiring is a weekly pool of two to four applicants with their full files open — training, judgment, temper, integrity, traits, expected pay. Pick one; the rest walk away, and a new pool comes next week. Recruits spend two weeks at the academy; laterals report at once.
+A report can reach the papers next week, months later or not at all. A lawsuit is different: it can settle against the department's account weeks after the operation."""],
+	["The department", """Open an officer's file to see their record, assign training or dismiss them. Each week brings two to four applicants. You can inspect their judgment, temper, integrity, habits and pay before you hire one. The others leave. Recruits spend two weeks at the academy; lateral hires report at once.
 
-Courses can be queued: an officer on a course, or in a hospital bed with a range course in mind, starts the next one the week they can. The classroom courses (judgment, use-of-force review) can be taken from the ward, and an officer retrained after a finding can do it there too. Three or more on the close-quarters refresher together pay three quarters each and come back bonded, as from an operation. A queued course that stops making sense comes off unspent, with a line saying why.
+Courses can be queued. A queued course starts when the officer is available; classroom courses can be taken while recovering. Three or more officers on the close-quarters refresher train together at a reduced cost and build squad bonds.
 
-The budget: the city's weekly allocation against pay, overtime, kit, training, medical bills and settlements. Overtime is a callout plus time on target — a forty-second raid is cheap, a ten-minute vigil at a rally is half rate and still not free. The budget screen shows the next four weeks on today's numbers, lawsuits included, and while the budget chair still answers you can apply for a one-time grant; asking spends some of her goodwill, and the committee will not be asked twice in a quarter. In the red, hiring, training and new kit freeze, and the council notices.
+The budget covers pay, overtime, kit, training, medical bills and settlements. Overtime includes the callout and time on target; rally posts cost half rate. The forecast shows four weeks on today's numbers, including filed lawsuits. A grant is available while the budget chair will answer. In the red, hiring, training and new kit stop.
 
-Morale falls with deaths, wounds, dismissals and deficits. Low morale puts more stress into every operation; very low morale costs you officers."""],
-	["The city", """City Hall shows the polls, the four allies and the trust of each ward.
+Deaths, wounds, dismissals and deficits lower morale. Low morale adds stress to every operation. Very low morale costs you officers."""],
+	["The city", """City Hall shows the polls, four allies and trust in each ward. Each ally holds something the department needs: the budget chair controls the allocation; the union affects morale; the coalition shares community tips; the district attorney decides whether a cleared case stays closed. Lose an ally below 25 and that support goes with them. Win them back above 40.
 
-Each ally holds something: the budget chair the allocation, the union president the officers' goodwill, the community coalition the tips, the district attorney the benefit of the doubt. Lose one below 25 and what they hold goes with them; win them back above 40.
+Royce Kettering promises the police more money and fewer limits. Dana Okonjo-Vale wants the Bridge Street order read in public. Gordon Pell wants the books balanced before the next promise is made. At the end of week 40, the city votes. The winner decides whether you keep the office.
 
-Royce Kettering gains from failure and fear. Dana Okonjo-Vale gains from every story of police harm, and wants you gone. Gordon Pell gains from quiet competence and balanced books. At the end of week 40 the city votes.
-
-And the city itself leans on your board. The six wards are the Endless Battle's six precincts: where the crews hold ground there, gang houses surface here; where a precinct has been loud, more work and more witnesses; where the battle's police are taking buildings back, less. Watch the battle, then start (or roll) a week, and the board follows the street."""],
-	["Controls", """Mouse wheel zooms; middle or right drag pans; Home refits the view.
-Space pauses an operation; 1-7 set its speed.
-F2 switches red ink off (the monochrome proof); F3 switches gore off. Neither touches the simulation.
+The six wards also share a map with the Endless Battle. Where crews hold ground, gang calls become more likely. A loud precinct brings more work and more witnesses; a quieter one may see less. Watch the battle, then start or roll a week. The campaign board reads the city as it stands."""],
+	["Controls", """Mouse wheel zooms. Middle- or right-drag pans. Home fits the view.
+Space pauses an operation; keys 1–7 set its speed.
+F2 switches off red ink. F3 switches off gore. Neither changes the simulation.
 Esc opens the menu.
 
-The test range (from the title) is a sandbox: any two teams, any echelons, habits and kit, on any of the twelve maps. The Endless Battle is the city of Port Carrick at war with itself, its gangs and its police, until you stop it."""],
+The test range is a sandbox: choose teams, habits and kit on any of twelve maps. The Endless Battle is Port Carrick's gangs, police and residents in a fight that keeps going until you stop it."""],
 ]
 
 

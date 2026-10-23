@@ -27,15 +27,15 @@ const STREETS := ["Alder", "Foundry", "Canal", "Kings", "Water", "Union", "Hope"
 	"Mill", "Grand", "Market", "Tannery", "Coke Oven", "Ore Dock", "Slag", "Furnace", "Rail"]
 const TYPES := {
 	"warrant": {"name": "Warrant service", "maps": [0, 1, 2, 4, 5, 6], "vis": [1, 3], "pressure": "none",
-		"blurb": "An arrest warrant for a named suspect at a home. You choose the hour."},
+		"blurb": "A judge's warrant names a suspect at a residence. You choose the hour; the other occupants and the layout remain uncertain."},
 	"gang": {"name": "Gang house raid", "maps": [2, 4, 5, 7, 8, 9, 10], "vis": [1, 2], "pressure": "low",
-		"blurb": "A house the crew uses to store guns and product. Several armed members, a few bystanders."},
+		"blurb": "A crew may be storing guns at this address. The file estimates armed members and residents; it cannot promise a count."},
 	"barricade": {"name": "Barricaded suspect", "maps": [0, 1, 3, 4, 6], "vis": [2, 3], "pressure": "low",
-		"blurb": "One armed suspect refuses to come out. Time is on your side, unless it is not."},
+		"blurb": "An armed suspect is holding in a residence. The clock may lower the risk; it cannot guarantee a safe exit."},
 	"hostage": {"name": "Hostage", "maps": [0, 3, 4, 5, 6], "vis": [3, 4], "pressure": "high",
-		"blurb": "Captors are holding people inside and have set a deadline."},
+		"blurb": "The caller reports captors and a deadline. The count, location and number of hostages remain uncertain."},
 	"event": {"name": "Public event", "maps": [11], "vis": [5, 5], "pressure": "set by the event",
-		"blurb": "A rally on Civic Plaza. Assign officers to posts and patrol routes. Almost always, nothing happens."},
+		"blurb": "A candidate's rally at Civic Plaza. Assign officers to posts and patrol routes. Most pass without incident; the threat estimate is not a promise."}
 }
 const PRESSURE_NAMES := {"none": "None: you pick the hour", "low": "Low", "high": "High: a deadline", "extreme": "Extreme",
 	"set by the event": "Set by the event"}

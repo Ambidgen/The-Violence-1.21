@@ -104,9 +104,9 @@ const Ledger = () => (
     <text x={283} y={52} textAnchor="middle" fontFamily={FONT.caps} fontSize={34} letterSpacing={9} fill={C.ink}>THE CARRICK LEDGER</text>
     <line x1={24} y1={66} x2={542} y2={66} stroke={C.ink} strokeWidth={3} />
     <line x1={24} y1={72} x2={542} y2={72} stroke={C.ink} strokeWidth={1} />
-    <text x={24} y={124} fontFamily={FONT.caps} fontWeight={600} fontSize={40} fill={C.ink}>IRONWORKS PLANT CLOSURE:</text>
-    <text x={24} y={170} fontFamily={FONT.caps} fontWeight={600} fontSize={40} fill={C.ink}>300 MORE JOBS GO</text>
-    <text x={24} y={204} fontFamily={FONT.type} fontSize={17} fill={C.dark}>The mill that built the city will be flats, eventually.</text>
+    <text x={24} y={124} fontFamily={FONT.caps} fontWeight={600} fontSize={40} fill={C.ink}>IRONWORKS PLANT CLOSES:</text>
+    <text x={24} y={170} fontFamily={FONT.caps} fontWeight={600} fontSize={40} fill={C.ink}>300 SHIFTS CUT</text>
+    <text x={24} y={204} fontFamily={FONT.type} fontSize={17} fill={C.dark}>Workers left the east gate with lockers in boxes.</text>
     {Array.from({length: 9}, (_, i) => <rect key={i} x={24} y={226 + i * 18} width={i % 4 === 3 ? 180 : 250} height={6} fill={C.light} />)}
     {Array.from({length: 9}, (_, i) => <rect key={'b' + i} x={296} y={226 + i * 18} width={i % 3 === 2 ? 150 : 246} height={6} fill={C.light} />)}
   </svg>
@@ -252,7 +252,7 @@ export const C1_PortCarrick = () => {
       {f >= MAP0 && f < HQ0 + 10 && (
         <Paper>
           <CityMap f={f} t0={MAP0} />
-          <Caption at={MAP0 + 40} until={MAP0 + 320} x={1190} y={150} w={650} size={36} text={'TWELVE WARDS.\nFOUR CREWS\nWHO WANT THEM.'} />
+          <Caption at={MAP0 + 40} until={MAP0 + 320} x={1190} y={150} w={650} size={36} text={'TWELVE NEIGHBOURHOODS.\nFOUR CREWS\nWHO WANT THEM.'} />
           <Caption at={MAP0 + 330} until={MAP0 + 600} x={1190} y={150} w={650} size={36} text={'SIX PRECINCTS.\nONE BUDGET THAT\nDOES NOT COVER THEM.'} />
         </Paper>
       )}

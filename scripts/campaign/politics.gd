@@ -46,11 +46,11 @@ const ALLY_ORDER := ["council", "union", "coalition", "da"]
 
 const CANDIDATES := {
 	"kettering": {"name": "Royce Kettering", "ticket": "Safe Streets", "start": 34,
-		"blurb": "A councilman who has never met a police budget he would not double, or a contract he would not steer to a cousin. Loves the department. Loves it loudly."},
+		"blurb": "A councilman with an answer for every problem: more police, more money, fewer questions. His brother-in-law builds armoured vehicles; the contracts remain a family matter."},
 	"okonjo": {"name": "Dana Okonjo-Vale", "ticket": "Carrick Together", "start": 31,
-		"blurb": "A democratic socialist who wants to fix the city and means it. She also wants you gone, and means that too: she has not forgiven you for the Bridge Street evictions."},
+		"blurb": "A democratic socialist who intends to repair the city. She wants your signature on the Bridge Street order read aloud—and your name off the door."},
 	"pell": {"name": "Gordon Pell", "ticket": "Independent", "start": 35,
-		"blurb": "Competent, tireless and boring enough to stop clocks. His platform is a comprehensive review of the city's existing reviews."},
+		"blurb": "Competent, tireless and difficult to hurry. His answer to a failed review is another review, with a clearer filing system."},
 }
 const CAND_ORDER := ["kettering", "okonjo", "pell"]
 
@@ -84,7 +84,7 @@ func start(seed_v: int) -> void:
 	record = {"civ_hit": 0, "civ_killed": 0, "excessive": 0, "officers_killed": 0, "suspects_killed": 0, "arrests": 0,
 		"successes": 0, "failures": 0, "unattended": 0, "stories": 0, "settled": 0, "leaks": 0, "charged": 0,
 		"dismissed": 0, "cleared": 0, "crowd_killed": 0, "grants": 0}
-	_headline(1, "NEW CHIEF TAKES COMMAND OF PORT CARRICK PD", "Forty weeks to the election. The council wants results, the coalition wants answers, and the union wants a raise.", "city")
+	_headline(1, "NEW CHIEF INHERITS BRIDGE STREET FILE", "The deputy chief signed the eviction order that cleared Bridge Street. The outgoing chief gave the briefing. The election is forty weeks away.", "city")
 
 
 # ================================================================== reading it
@@ -278,7 +278,7 @@ func on_operation(week: int, sit: Dictionary, res: Dictionary, w, dept) -> Array
 			_poll("pell", -0.2 * vis)
 			_trust(wi, -1 - vis / 2)
 			if vis >= 3:
-				_headline(week, "POLICE OPERATION IN %s ENDS IN FAILURE" % where.to_upper(), "The %s at %s did not go to plan. Kettering: 'Our officers deserve leadership.'" % [what, sit.get("address", "")], "op")
+				_headline(week, "POLICE OPERATION IN %s ENDS IN FAILURE" % where.to_upper(), "The %s at %s did not go to plan. Kettering: 'The officers did their job. The chief made them wait.'" % [what, sit.get("address", "")], "op")
 	# officers killed: the union blames management, the law-and-order ticket blames everyone else
 	if off_killed > 0:
 		_ally("union", -4 * off_killed, dept, lines)
@@ -297,7 +297,7 @@ func on_operation(week: int, sit: Dictionary, res: Dictionary, w, dept) -> Array
 		_poll("kettering", 2.0 * crowd_killed)
 		_poll("pell", -3.0)
 		_trust(2, -8)
-		_headline(week, "%s KILLED AT CIVIC PLAZA RALLY" % _num(crowd_killed).to_upper(), "The city asks how the security plan failed. Pell calls for a review; Okonjo-Vale calls for your resignation.", "op")
+		_headline(week, "%s KILLED AT CIVIC PLAZA RALLY" % _num(crowd_killed).to_upper(), "The rally was over before the ambulances left. Pell calls for a review; Okonjo-Vale asks who signed the plan.", "op")
 	# what was done to civilians by police: the story is coming, sooner or later
 	if civ_hit + civ_killed + excessive > 0:
 		var p_never := 0.0
@@ -480,9 +480,18 @@ func _land(week: int, p: Dictionary, dept) -> Array:
 			else:
 				head = "WITNESSES DESCRIBE EXCESSIVE FORCE AT %s" % String(p["address"]).to_upper()
 			var late: int = week - int(p["op_week"])
-			var body := "%s%s Okonjo-Vale: 'This is what policing looks like under this chief.'" % [
-				"Video of the %s at %s is circulating. " % [p["what"], p["address"]] if p["strength"] == "video" else "Residents of %s describe the %s at %s. " % [p["ward"], p["what"], p["address"]],
-				("(The operation was %d weeks ago.) " % late) if late >= 3 else ""]
+			var source := ""
+			match String(p["strength"]):
+				"video":
+					source = "Video of the operation at %s is circulating. " % String(p["address"])
+				"witness":
+					source = "Witnesses from %s describe the operation at %s. " % [String(p["ward"]), String(p["address"])]
+				"heard":
+					source = "Residents near %s describe what they heard. " % String(p["address"])
+				_:
+					source = "The department's log records the finding at %s. " % String(p["address"])
+			var age := ("The operation was %d weeks ago. " % late) if late >= 3 else ""
+			var body := "%s%sOkonjo-Vale: 'A report is not the same thing as an answer.'" % [source, age]
 			_headline(week, head, body, "story")
 			lines.append("In the papers: %s." % head.capitalize())
 		"lawsuit":
@@ -525,21 +534,21 @@ func _front_page(week: int) -> void:
 		var ld := leader()
 		var sh := share(ld)
 		var lines_c := {
-			"kettering": ["KETTERING: 'I WILL GIVE THE POLICE WHATEVER THEY ASK FOR'", "%s%% back Kettering's 'Safe Streets' ticket. His brother-in-law's armoured vehicle firm declines to comment." % int(sh)],
-			"okonjo": ["OKONJO-VALE LEADS: 'THE CHIEF WILL BE MY FIRST APPOINTMENT TO LEAVE'", "%s%% back Carrick Together. Asked about the Bridge Street evictions, she said only: 'He knows.'" % int(sh)],
-			"pell": ["PELL UNVEILS 212-PAGE PLAN TO STREAMLINE CITY PAPERWORK", "%s%% back the independent. The plan includes a form for requesting the plan." % int(sh)],
+			"kettering": ["KETTERING: 'I WILL GIVE THE POLICE WHATEVER THEY ASK FOR'", "%s%% back Kettering's Safe Streets ticket. His brother-in-law's armoured vehicle firm did not return the Ledger's call." % int(sh)],
+			"okonjo": ["OKONJO-VALE LEADS: 'THE CHIEF WILL BE MY FIRST APPOINTMENT TO LEAVE'", "%s%% back Carrick Together. Asked about Bridge Street, she held up the signed order. 'He knows.'" % int(sh)],
+			"pell": ["PELL UNVEILS 212-PAGE PLAN TO STREAMLINE CITY PAPERWORK", "%s%% back the independent. The plan includes a form for requesting a review of the plan." % int(sh)],
 		}
 		_headline(week, lines_c[ld][0], lines_c[ld][1], "politics")
 		have += 1
 	var filler := [
-		["COUNCIL DEBATES POTHOLE ON UNION STREET FOR FOURTH WEEK", "The pothole has been invited to testify."],
-		["IRONWORKS PLANT CLOSURE: 300 MORE JOBS GO", "The mill that built the city will be flats, eventually."],
-		["HARBOUR BRIDGE INSPECTION 'POSTPONED INDEFINITELY'", "Engineers recommend walking briskly."],
-		["CITY HALL ELEVATOR STUCK AGAIN; PELL TAKES STAIRS, NOTES TIME", "He has submitted the figure to the clerk."],
-		["CARRICK LEDGER CUTS ANOTHER FOUR REPORTERS", "This newspaper regrets nothing it can still afford to print."],
-		["NORTHGATE BAKERY WINS REGIONAL PRIZE FOR RYE", "The one good thing this week."],
-		["WATER MAIN BURSTS UNDER STATION ROAD", "Repairs will take 'weeks, possibly a season'."],
-		["SCHOOL BOARD VOTES TO MERGE TWO MORE SCHOOLS", "Parents say the buses already run late."],
+		["UNION STREET REPAIR CREW RETURNS TO THE SAME POTHOLE", "One lane is closed. The city says a steel plate will arrive Thursday."],
+		["IRONWORKS PLANT CLOSURE: 300 SHIFTS CUT", "Workers left through the east gate with their lockers in boxes."],
+		["HARBOUR BRIDGE INSPECTION DELAYED AGAIN", "The weight limit remains in force. The detour adds twenty minutes."],
+		["CITY HALL ELEVATOR STUCK; PELL TAKES THE STAIRS", "His office logged the climb as a facilities issue."],
+		["CARRICK LEDGER CUTS FOUR REPORTERS", "The city desk will cover council and courts with one fewer person."],
+		["NORTHGATE BAKERY WINS REGIONAL PRIZE FOR RYE", "The owner says the ovens are older than the lease."],
+		["WATER MAIN BURSTS UNDER STATION ROAD", "Crews have closed the block. Repairs may run into next week."],
+		["SCHOOL BOARD VOTES TO MERGE TWO MORE SCHOOLS", "Families ask which bus will take their children to the new site."],
 	]
 	while have < 3:
 		var f: Array = filler[(week * 3 + have) % filler.size()]
@@ -581,32 +590,33 @@ func ending(dept) -> Dictionary:
 	match win:
 		"kettering":
 			keep = true
-			head = "Kettering keeps you on. Of course he does."
-			lines.append("The new mayor doubles the equipment budget in his first week. The contracts go to firms nobody has heard of.")
+			head = "Kettering keeps you. The equipment budget doubles."
+			lines.append("On his first morning, the new mayor signs the equipment increase. The first contract goes to a firm owned by his brother-in-law.")
 			if force >= 6:
-				lines.append("Your force record is exactly what he campaigned on. He makes you Deputy Mayor for Public Safety. The coalition files a federal complaint the same afternoon.")
+				lines.append("He points to your force record as proof the city needs fewer limits. The coalition's lawyer files a federal complaint before the budget meeting ends.")
 			else:
-				lines.append("He asks you to be 'more visible'. You are given a podium and a flag and a list of neighbourhoods to be visible in.")
+				lines.append("He asks you to be more visible. The podium is set beside the flag; the list of neighbourhoods is on your chair.")
 			if lost("da"):
-				lines.append("Varga's office keeps charging officers. Kettering keeps pardoning them. Everyone keeps filing.")
+				lines.append("Varga's office keeps charging officers. Kettering keeps pardoning them. Both offices keep the files.")
 		"okonjo":
 			keep = t >= 60.0 and not lost("coalition") and force <= 2
 			if keep:
-				head = "Okonjo-Vale keeps you. In writing. For ninety days."
-				lines.append("Your record leaves her nothing to fire you for. She says so at the swearing-in, through her teeth. The coalition calls it 'a test'. Rourke calls it 'probation'. They are both right.")
+				head = "Okonjo-Vale keeps you—for ninety days, in writing."
+				lines.append("At the swearing-in, she places the Bridge Street order beside your appointment letter. 'Your signature is here,' she says. 'The next one has to mean something.'")
+				lines.append("The coalition calls the appointment a test. Rourke calls it probation. The oversight board receives its first file before the office opens.")
 			else:
 				head = "Okonjo-Vale fires you on her first morning."
-				lines.append("Your dismissal is the first item of business, before the coffee. She reads the force record aloud: %d civilians hit by police, %d killed. She does not mention Bridge Street. She does not have to." % [int(record["civ_hit"]), int(record["civ_killed"])])
-			lines.append("The department is put under a civilian oversight board. Its first request is every file you ever closed.")
+				lines.append("She reads the Bridge Street order into the record, then your force record: %d civilians hit by police, %d killed. The old signature and the new numbers share a page." % [int(record["civ_hit"]), int(record["civ_killed"])])
+				lines.append("The department goes under civilian oversight. Its first request is every file you ever closed.")
 		"pell":
 			keep = dept.balance >= 0 and dept.deficit_weeks <= 4
 			if keep:
 				head = "Pell keeps you, subject to review."
-				lines.append("The review is scheduled for the third quarter of the year after next. Your budget is balanced, so he likes you, in the way a man likes a spreadsheet that adds up.")
+				lines.append("His first order is a review of the Bridge Street file. Yours is scheduled for the third quarter of the year after next. The account balances; for now, so does your desk.")
 			else:
 				head = "Pell reviews your position out of existence."
-				lines.append("%d weeks in deficit. The chief's office is merged into the Department of Municipal Services, Sub-Division C. Your desk is reassigned to parking enforcement." % int(dept.deficit_weeks))
-	lines.append("Forty weeks: %s succeeded, %d failed, %s nobody went to. %s killed. %s in the papers, %s settled, %s leaked." % [
+				lines.append("After %d weeks in deficit, the chief's office is folded into Municipal Services, Sub-Division C. Your desk is reassigned to parking enforcement; the line item is already approved." % int(dept.deficit_weeks))
+	lines.append("Forty weeks: %s succeeded, %d failed, %s went unattended. %s killed. %s stories reached the papers; %s lawsuits settled; %s cases leaked." % [
 		_n(int(record["successes"]), "operation"), int(record["failures"]), _n(int(record["unattended"]), "situation"),
 		_n(int(record["officers_killed"]), "officer"), _n(int(record["stories"]), "story", "stories"),
 		_n(int(record["settled"]), "lawsuit"), _n(int(record["leaks"]), "case")])

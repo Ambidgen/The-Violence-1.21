@@ -7,9 +7,9 @@ import {C, FONT, clamp, prog, Paper, Panel, Caption, Stamp, Draw, Fades, Sfx, Be
 export const C4_LEN = 1170;
 
 const CANDIDATES = [
-  ['ROYCE KETTERING', 'SAFE STREETS', 'A councilman who has never met a police budget he would not double.', 34],
-  ['DANA OKONJO-VALE', 'CARRICK TOGETHER', 'She wants to fix the city, and means it. She also wants you gone.', 31],
-  ['GORDON PELL', 'INDEPENDENT', 'Competent, tireless and boring enough to stop clocks.', 35],
+  ['ROYCE KETTERING', 'SAFE STREETS', 'A councilman who asks for more police, a bigger budget, fewer questions. His brother-in-law builds armoured vehicles.', 34],
+  ['DANA OKONJO-VALE', 'CARRICK TOGETHER', 'She wants to repair the city. She has not forgiven your signature on the Bridge Street eviction order.', 31],
+  ['GORDON PELL', 'INDEPENDENT', 'Tireless, difficult to hurry. His answer to a failed review is another review, with a better filing system.', 35],
 ];
 const ALLIES = [
   ['MARGUERITE DUFF', 'Councillor, chair of the budget committee', 55, 'Holds the weekly allocation.'],
@@ -88,7 +88,7 @@ export const C4_FortyWeeks = () => {
             })}
           </svg>
           <Caption at={P0 + 140} until={A0 + 6} x={110} y={790} w={1400} size={36}
-            text={'THREE CANDIDATES FOR MAYOR.\nWHOEVER WINS DECIDES WHAT HAPPENS TO YOU.'} red="YOU" />
+            text={'THREE CANDIDATES FOR MAYOR.\nONLY ONE DECIDES WHETHER YOU STAY.'} red="STAY" />
         </Paper>
       )}
       {f >= A0 && f < N0 + 10 && (
@@ -125,9 +125,9 @@ export const C4_FortyWeeks = () => {
                 <div style={{fontFamily: FONT.caps, fontSize: 58, letterSpacing: 18, textAlign: 'center', color: C.ink}}>THE CARRICK LEDGER</div>
                 <div style={{borderTop: `4px solid ${C.ink}`, borderBottom: `1px solid ${C.ink}`, height: 4, margin: '10px 0 6px'}} />
                 <div style={{fontFamily: FONT.caps, fontSize: 24, letterSpacing: 4, color: C.dark, display: 'flex', justifyContent: 'space-between'}}><span>WEEK 1</span><span>PORT CARRICK</span><span>50 CENTS</span></div>
-                <div style={{fontFamily: FONT.caps, fontWeight: 600, fontSize: 92, lineHeight: 1.05, color: C.ink, marginTop: 30}}>NEW CHIEF TAKES COMMAND OF PORT CARRICK PD</div>
+                <div style={{fontFamily: FONT.caps, fontWeight: 600, fontSize: 92, lineHeight: 1.05, color: C.ink, marginTop: 30}}>NEW CHIEF INHERITS BRIDGE STREET FILE</div>
                 <div style={{fontFamily: FONT.type, fontSize: 32, color: C.dark, marginTop: 24, lineHeight: 1.35}}>
-                  Forty weeks to the election. The council wants results, the coalition wants answers, and the union wants a raise.
+                  The deputy chief signed the eviction order. His predecessor gave the briefing. The election is forty weeks away.
                 </div>
                 <div style={{display: 'flex', gap: 30, marginTop: 30}}>
                   {[0, 1, 2].map((k) => <div key={k} style={{flex: 1}}>{Array.from({length: 6}, (_, j) => <div key={j} style={{height: 8, background: C.light, marginBottom: 12, width: j === 5 ? '60%' : '100%'}} />)}</div>)}

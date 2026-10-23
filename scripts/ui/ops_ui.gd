@@ -15,6 +15,8 @@ const Equipment = preload("res://scripts/data/equipment.gd")
 const Courses = preload("res://scripts/data/courses.gd")
 const Department = preload("res://scripts/campaign/department.gd")
 const Politics = preload("res://scripts/campaign/politics.gd")
+const Story = preload("res://scripts/campaign/story.gd")
+const StoryArchive = preload("res://scripts/campaign/story_archive.gd")
 const Settings = preload("res://scripts/ui/settings.gd")
 const PANEL_W := 460.0
 const INK := Color("#121212")
@@ -23,19 +25,20 @@ const OBJ_KINDS := ["clear", "arrest", "rescue", "contain", "post", "patrol"]
 
 var main
 var root: PanelContainer
+var _scroll: ScrollContainer
 var box: VBoxContainer
 var mode := ""
-var tab := 0                 # plan screen: 0 briefing, 1 force, 2 orders
+var tab := 0  # plan screen: 0 briefing, 1 force, 2 orders
 var sel_sq := 0
-var pick := {}               # map tool: {kind, squad, obj}
+var pick := {}  # map tool: {kind, squad, obj}
 var abort_armed := false
-var _run_refs := {}          # widgets updated every refresh during the run
+var _run_refs := {}  # widgets updated every refresh during the run
 var _log_shown := 0
 var _rewinding := false
-var _sliding := false        # the panel itself is moving a slider: not the player
-var kit_open := ""           # Force screen: the officer whose kit is being edited (v0.7.5)
-var roster_open := ""        # Roster: the officer whose file is open (v0.8.5)
-var flash := ""              # a one-line answer to the last thing tried (v0.8.5)
+var _sliding := false  # the panel itself is moving a slider: not the player
+var kit_open := ""  # Force screen: the officer whose kit is being edited (v0.7.5)
+var roster_open := ""  # Roster: the officer whose file is open (v0.8.5)
+var flash := ""  # a one-line answer to the last thing tried (v0.8.5)
 
 
 func build(m) -> void:
@@ -46,13 +49,13 @@ func build(m) -> void:
 	root.offset_left = -PANEL_W
 	root.visible = false
 	add_child(root)
-	var sc := ScrollContainer.new()
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	root.add_child(sc)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root.add_child(_scroll)
 	box = VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 6)
-	sc.add_child(box)
+	_scroll.add_child(box)
 
 
 func hide_all() -> void:
@@ -63,6 +66,8 @@ func hide_all() -> void:
 func _clear() -> void:
 	for c in box.get_children():
 		c.queue_free()
+	_scroll.scroll_horizontal = 0
+	_scroll.scroll_vertical = 0
 	_run_refs.clear()
 
 
@@ -161,15 +166,29 @@ func show_board(lines := []) -> void:
 	if c.over():
 		_election_night(lines)
 		return
-	_title("OPERATIONS  ·  week %d of %d" % [c.week(), c.WEEKS])
+	_title("THE CAMPAIGN FILE  ·  week %d of %d" % [c.week(), c.WEEKS])
 	var fit: int = d.available().size()
 	var out: int = d.officers.filter(func(r): return r["status"] == "injured").size()
 	var busy: int = c.committed().size()
-	_text(box, "Port Carrick PD: %d officers fit, %d out injured. %d committed this week. Officers sent to one situation, or out canvassing, cannot go to another." % [fit, out, busy], GREY, 11)
+	_text(
+		box,
+		(
+			"PORT CARRICK PD  ·  %d fit, %d injured, %d committed this week. An officer sent to one call cannot answer another."
+			% [fit, out, busy]
+		),
+		GREY,
+		11
+	)
 	if not c.pressure.is_empty():
-		# Q7: this board was drawn from the endless battle's city
-		_text(box, "From the street: %s. Watch the endless battle (or let a week pass) and the board follows the city." % c.pressure_summary(), GREY, 10)
+		# The endless battle leaves a reading in the campaign file; it does not change its rules.
+		_text(
+			box,
+			"From the street: %s. The board follows the city as it changes." % c.pressure_summary(),
+			GREY,
+			10
+		)
 	_dept_strip(box)
+	_story_card(box, Story.current(c))
 	if bool(Settings.get_v("tips")) and c.week() <= 2:
 		_first_weeks(box)
 	_front_page(box, c.politics, c.week() - 1 if c.week() > 1 else 1)
@@ -182,19 +201,46 @@ func show_board(lines := []) -> void:
 		t.add_theme_font_size_override("font_size", 14)
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(t)
-		_text(v, "%s  ·  %s ward (trust %d)  ·  visibility %s  ·  pressure: %s" % [Situations.TYPES[s["type"]]["name"], s["ward"],
-			int(s["trust"]), dots(int(s["visibility"])), String(s["pressure"])], GREY, 11)
+		_text(
+			v,
+			(
+				"%s  ·  %s ward (trust %d)  ·  visibility %s  ·  pressure: %s"
+				% [
+					Situations.TYPES[s["type"]]["name"],
+					s["ward"],
+					int(s["trust"]),
+					dots(int(s["visibility"])),
+					String(s["pressure"])
+				]
+			),
+			GREY,
+			11
+		)
 		var st := ""
 		match s["status"]:
 			"open":
 				var n: int = c.plan_members(s).size()
-				st = "Open: %s" % (("planned, %d officer%s" % [n, "" if n == 1 else "s"]) if n > 0 else "nobody assigned yet")
+				st = (
+					"Open: %s"
+					% (
+						("planned, %d officer%s" % [n, "" if n == 1 else "s"])
+						if n > 0
+						else "nobody assigned yet"
+					)
+				)
 				if not s.get("canvass", []).is_empty():
 					st += ", %d canvassing" % s["canvass"].size()
 			"done":
 				var r: Dictionary = s.get("result", {})
 				var g0: String = r.get("goal", "")
-				st = "Done: %s, %d. %s." % [r.get("label", "?"), int(r.get("score", 0)), g0.substr(0, 1).to_upper() + g0.substr(1)]
+				st = (
+					"Done: %s, %d. %s."
+					% [
+						r.get("label", "?"),
+						int(r.get("score", 0)),
+						g0.substr(0, 1).to_upper() + g0.substr(1)
+					]
+				)
 			_:
 				st = "Unattended"
 		_text(v, st, INK, 12)
@@ -211,8 +257,11 @@ func show_board(lines := []) -> void:
 	var nc: int = d.open_cases().size()
 	_btn(hb, "Internal affairs%s" % ((" (%d)" % nc) if nc > 0 else ""), func(): _cases())
 	var hb2 := _h(box)
+	_btn(hb2, "Campaign file", func(): _story_file())
 	_btn(hb2, "<  Main menu", func(): main.go_title())
-	_text(box, "One save slot: the campaign is saved after every operation and every week.", GREY, 10)
+	_text(
+		box, "One campaign is kept. The file is saved after each operation and each week.", GREY, 10
+	)
 
 
 func _end_week() -> void:
@@ -225,14 +274,14 @@ func _first_weeks(parent: Control) -> void:
 	var v := _card(parent)
 	_text(v, "FROM THE OUTGOING CHIEF", INK, 12)
 	for ln in [
-		"You will not answer everything. Pick what matters: a hostage taking or a crew house left alone comes back; a quiet warrant can wait a week.",
-		"Brief and plan opens the situation. Suggest a plan gives you a sensible start: read it, change it, then Run.",
-		"Send at least four through a door. Plates and a helmet for anyone going in. Rookies shoot slower and crack sooner.",
-		"After each operation: the debrief, then Internal affairs. What you clear, the press may find. What you punish, the union remembers.",
-		"End week when you are done. Check City Hall now and then: the election is in forty weeks.",
+		"The board is a week, not a queue. You will not have enough officers for every call.",
+		"Open the file before you plan. Estimates are marked with confidence; canvassing costs an officer for the week.",
+		"Suggest a plan is a starting point. Change the people, the entry, the orders—or start with a blank plan in Settings.",
+		"After an operation, read the debrief and the internal affairs file. A clean score does not erase what the city saw.",
+		"End the week when you are ready. The budget, the roster and the wards carry every decision forward.",
 	]:
 		_text(v, "·  " + ln, INK, 11)
-	_text(v, "(These notes stop after week 2; turn tips off in Settings.)", GREY, 10)
+	_text(v, "These notes stop after week 2. Tips can be turned off in Settings.", GREY, 10)
 
 
 ## The Carrick Ledger: last week's front page (v0.9).
@@ -244,13 +293,271 @@ func _front_page(parent: Control, p, week: int) -> void:
 	var mast := _text(v, "T H E   C A R R I C K   L E D G E R   ·   week %d" % week, INK, 11)
 	mast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	for it in items.slice(0, 3):
-		var hot: bool = it["kind"] in ["story", "case"] or (it["kind"] == "op" and String(it["head"]).find("KILLED") >= 0)
+		var hot: bool = (
+			it["kind"] in ["story", "case"]
+			or (it["kind"] == "op" and String(it["head"]).find("KILLED") >= 0)
+		)
 		_text(v, String(it["head"]), Ink.accent(0.9) if hot else INK, 13)
 		_text(v, String(it["body"]), GREY, 10)
 
 
+## The recurring chapter card: the act gives the campaign its question; the open call,
+## current record and named voice keep this week's page tied to play.
+func _story_card(parent: Control, page: Dictionary) -> void:
+	if page.is_empty():
+		return
+	var v := _card(parent)
+	_text(
+		v,
+		(
+			"ACT %d  ·  %s  ·  WEEK %d"
+			% [int(page["act"]), String(page["act_title"]).to_upper(), int(page["week"])]
+		),
+		GREY,
+		10
+	)
+	_text(v, String(page["title"]).to_upper(), INK, 13)
+	_text(v, String(page["text"]), INK, 11)
+	if String(page.get("focus", "")) != "":
+		_text(v, "THIS WEEK  ·  " + String(page["focus"]), GREY, 10)
+	if String(page.get("quote", "")) != "":
+		_text(v, "“%s”" % String(page["quote"]), INK, 11)
+		_text(v, "— %s" % String(page["speaker"]), GREY, 10)
+	if String(page.get("record", "")) != "":
+		_text(v, "THE RECORD  ·  " + String(page["record"]), GREY, 10)
+
+
+## A rereadable account of the campaign: the inherited premise, act structure and the
+## Ledger's latest version. All entries come from the saved campaign record.
+func _story_file() -> void:
+	mode = "story"
+	_clear()
+	var c = main.campaign
+	var p = c.politics
+	var page: Dictionary = Story.current(c)
+	_title("CAMPAIGN FILE  ·  week %d of %d" % [mini(c.week(), c.WEEKS), c.WEEKS])
+	_story_card(box, page)
+	var tools := _h(box)
+	_btn(tools, "People & conversations", func(): _people())
+	_btn(tools, "Documents", func(): _documents())
+	var inherited := _card(box)
+	_text(inherited, "THE INHERITED FILE", INK, 12)
+	_text(inherited, Story.PROLOGUE, GREY, 11)
+	var figures := _card(box)
+	_text(figures, "THE FORCE RECORD", INK, 12)
+	_text(
+		figures,
+		(
+			"%d operations succeeded; %d failed; %d situations left unattended. %d civilians hit by police; %d killed. %d officers killed. Average ward trust: %.0f."
+			% [
+				int(p.record.get("successes", 0)),
+				int(p.record.get("failures", 0)),
+				int(p.record.get("unattended", 0)),
+				int(p.record.get("civ_hit", 0)),
+				int(p.record.get("civ_killed", 0)),
+				int(p.record.get("officers_killed", 0)),
+				p.avg_trust()
+			]
+		),
+		GREY,
+		10
+	)
+	_text(box, "FIVE ACTS", INK, 12)
+	for act in Story.acts():
+		var av := _card(box)
+		var state := "AHEAD"
+		if c.week() > int(act["last"]) or c.over():
+			state = "FILED"
+		elif c.week() >= int(act["first"]):
+			state = "CURRENT"
+		_text(
+			av,
+			(
+				"ACT %d  ·  %s  ·  WEEKS %d–%d  ·  %s"
+				% [
+					int(act["number"]),
+					String(act["title"]).to_upper(),
+					int(act["first"]),
+					int(act["last"]),
+					state
+				]
+			),
+			Ink.accent(0.9) if state == "CURRENT" else INK,
+			11
+		)
+		_text(av, String(act["summary"]), GREY, 10)
+	var latest: Array = p.press
+	_text(box, "THE PUBLIC RECORD  ·  THE CARRICK LEDGER", INK, 12)
+	var shown := 0
+	for i in range(latest.size() - 1, maxi(-1, latest.size() - 9), -1):
+		var item: Dictionary = latest[i]
+		var h := _card(box)
+		_text(
+			h, "WEEK %d  ·  %s" % [int(item.get("week", 0)), String(item.get("head", ""))], INK, 11
+		)
+		_text(h, String(item.get("body", "")), GREY, 10)
+		shown += 1
+	if shown == 0:
+		_text(box, "No front page has been filed yet.", GREY, 10)
+	var actions := _h(box)
+	_btn(actions, "<  Back to the board", func(): show_board())
+	if c.over():
+		_btn(actions, "Election night", func(): _election_night([]))
+
+
+## A directory of people whose choices and institutions shape the campaign.
+func _people() -> void:
+	mode = "people"
+	_clear()
+	var c = main.campaign
+	_title("PEOPLE  ·  WEEK %d" % mini(c.week(), c.WEEKS))
+	_text(
+		box,
+		"Ask a question. Their answers read the current campaign file; they do not advance the week.",
+		GREY,
+		10
+	)
+	for person in StoryArchive.contacts(c):
+		var card := _card(box)
+		var contact_id := String(person["id"])
+		_text(card, String(person["name"]).to_upper(), INK, 12)
+		_text(card, String(person["role"]), GREY, 10)
+		_text(card, String(person["intro"]), INK, 10)
+		_text(
+			card,
+			String(person["status"]),
+			Ink.accent(0.85) if String(person["status"]).contains("lost") else GREY,
+			10
+		)
+		_btn(card, "Open conversation", _conversation.bind(contact_id))
+	var actions := _h(box)
+	_btn(actions, "Documents", func(): _documents())
+	_btn(actions, "Campaign file", func(): _story_file())
+	_btn(actions, "<  Back to board", func(): show_board())
+
+
+## One question at a time; returning to an answer never changes campaign state.
+func _conversation(contact_id: String, topic_id := "") -> void:
+	mode = "conversation"
+	_clear()
+	var c = main.campaign
+	var person: Dictionary = StoryArchive.contact(c, contact_id)
+	if person.is_empty():
+		_people()
+		return
+	_title("CONVERSATION  ·  %s" % String(person["name"]).to_upper())
+	var profile := _card(box)
+	_text(profile, String(person["role"]), GREY, 10)
+	_text(profile, String(person["intro"]), INK, 11)
+	_text(profile, String(person["status"]), GREY, 10)
+	if topic_id != "":
+		var exchange: Dictionary = StoryArchive.dialogue(c, contact_id, topic_id)
+		if not exchange.is_empty():
+			var scene := _card(box)
+			_text(scene, "YOU ASK", GREY, 10)
+			_text(scene, "“%s”" % String(exchange["question"]), INK, 11)
+			_text(scene, String(exchange["speaker"]).to_upper(), GREY, 10)
+			_text(scene, String(exchange["reply"]), INK, 12)
+			var reference := String(exchange.get("reference", ""))
+			if reference != "":
+				_btn(
+					scene,
+					"Open the referenced document",
+					_open_document.bind(reference, "all", contact_id, topic_id)
+				)
+	_text(box, "ASK ABOUT", INK, 12)
+	for topic in StoryArchive.topics(contact_id):
+		_btn(box, String(topic["label"]), _conversation.bind(contact_id, String(topic["id"])))
+	var actions := _h(box)
+	_btn(actions, "All people", func(): _people())
+	_btn(actions, "Documents", func(): _documents())
+	_btn(actions, "Campaign file", func(): _story_file())
+
+
+## Documents are extracts from campaign state: memos, accounts, findings and clippings.
+func _documents(
+	filter := "all", selected_id := "", return_person := "", return_topic := ""
+) -> void:
+	mode = "documents"
+	_clear()
+	var c = main.campaign
+	_title("DOCUMENTS  ·  WEEK %d" % mini(c.week(), c.WEEKS))
+	if selected_id != "":
+		var found: Dictionary = {}
+		for document in StoryArchive.documents(c, filter):
+			if String(document["id"]) == selected_id:
+				found = document
+				break
+		if found.is_empty():
+			_text(box, "That document is no longer in the current file.", GREY, 11)
+		else:
+			var page := _card(box)
+			_text(page, String(found["date"]), GREY, 10)
+			_text(page, String(found["title"]).to_upper(), INK, 14)
+			_text(
+				page,
+				"FROM  %s   ·   TO  %s" % [String(found["from"]), String(found["to"])],
+				GREY,
+				10
+			)
+			_text(page, String(found["body"]), INK, 11)
+		var actions := _h(box)
+		_btn(actions, "Back to list", _documents.bind(filter))
+		if return_person != "":
+			_btn(actions, "Back to conversation", _conversation.bind(return_person, return_topic))
+		else:
+			_btn(actions, "People", func(): _people())
+		_btn(actions, "Campaign file", func(): _story_file())
+		return
+	var tabs := _h(box)
+	for tab in [
+		{"id": "all", "label": "All"},
+		{"id": "office", "label": "Office"},
+		{"id": "cases", "label": "Internal Affairs"},
+		{"id": "press", "label": "Press"},
+		{"id": "street", "label": "Street"},
+	]:
+		_btn(tabs, String(tab["label"]), _documents.bind(String(tab["id"])))
+	_text(
+		box,
+		"These pages are assembled from the saved campaign record. Nothing here changes the week or adds a finding.",
+		GREY,
+		10
+	)
+	var documents: Array = StoryArchive.documents(c, filter)
+	if documents.is_empty():
+		_text(box, "No documents in this section yet.", GREY, 11)
+	for document in documents:
+		var card := _card(box)
+		_text(card, String(document["date"]), GREY, 9)
+		_text(card, String(document["title"]), INK, 12)
+		_text(
+			card,
+			"FROM  %s   ·   TO  %s" % [String(document["from"]), String(document["to"])],
+			GREY,
+			9
+		)
+		var body := String(document["body"])
+		var excerpt := body.substr(0, mini(body.length(), 150))
+		if body.length() > 150:
+			excerpt += "…"
+		_text(card, excerpt, GREY, 10)
+		_btn(card, "Read document", _open_document.bind(String(document["id"]), filter))
+	var actions := _h(box)
+	_btn(actions, "People & conversations", func(): _people())
+	_btn(actions, "Campaign file", func(): _story_file())
+	_btn(actions, "<  Back to board", func(): show_board())
+
+
+func _open_document(
+	document_id: String, filter := "all", return_person := "", return_topic := ""
+) -> void:
+	_documents(filter, document_id, return_person, return_topic)
+
+
 ## Poll bars, told apart by pattern: Kettering solid ink, Okonjo-Vale hatched, Pell outline.
-class PollBars extends Control:
+class PollBars:
+	extends Control
 	var p
 
 	func _init(pol) -> void:
@@ -271,17 +578,42 @@ class PollBars extends Control:
 					draw_rect(r, Ink.INK, false, 1.2)
 					var x := r.position.x
 					while x < r.end.x:
-						draw_line(Vector2(x, r.end.y), Vector2(minf(x + 10, r.end.x), r.position.y + (14.0 * maxf(0.0, x + 10 - r.end.x) / 10.0)), Ink.INK, 1.0)
+						draw_line(
+							Vector2(x, r.end.y),
+							Vector2(
+								minf(x + 10, r.end.x),
+								r.position.y + (14.0 * maxf(0.0, x + 10 - r.end.x) / 10.0)
+							),
+							Ink.INK,
+							1.0
+						)
 						x += 5.0
 				_:
 					draw_rect(r, Ink.INK, false, 1.4)
-			draw_string(font, Vector2(0, y + 12), Politics.CANDIDATES[c]["name"], HORIZONTAL_ALIGNMENT_LEFT, 146, 12, Ink.INK)
-			draw_string(font, Vector2(r.end.x + 6, y + 12), "%d%%" % int(round(sh)), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Ink.INK)
+			draw_string(
+				font,
+				Vector2(0, y + 12),
+				Politics.CANDIDATES[c]["name"],
+				HORIZONTAL_ALIGNMENT_LEFT,
+				146,
+				12,
+				Ink.INK
+			)
+			draw_string(
+				font,
+				Vector2(r.end.x + 6, y + 12),
+				"%d%%" % int(round(sh)),
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1,
+				12,
+				Ink.INK
+			)
 			y += 21.0
 
 
 ## A standing bar for an ally: ink to their standing, the lost line marked.
-class StandBar extends Control:
+class StandBar:
+	extends Control
 	var v := 50
 	var lost := false
 
@@ -305,37 +637,87 @@ func _city_hall() -> void:
 	var c = main.campaign
 	var p = c.politics
 	_title("CITY HALL  ·  week %d of %d" % [c.week(), c.WEEKS])
-	_text(box, "The election is held at the end of week %d. Whoever wins decides what happens to you." % Politics.ELECTION_WEEK, GREY, 10)
+	_text(
+		box,
+		(
+			"The election is at the end of week %d. The result determines who holds the office next."
+			% Politics.ELECTION_WEEK
+		),
+		GREY,
+		10
+	)
 	_text(box, "THE POLLS", INK, 12)
 	box.add_child(PollBars.new(p))
 	for cid in Politics.CAND_ORDER:
 		var cd: Dictionary = Politics.CANDIDATES[cid]
 		_text(box, "%s (%s): %s" % [cd["name"], cd["ticket"], cd["blurb"]], GREY, 10)
 	_sep()
-	_text(box, "ALLIES  ·  below the line an ally is lost, and what they hold goes with them", INK, 12)
+	_text(
+		box, "ALLIES  ·  below the line an ally is lost, and what they hold goes with them", INK, 12
+	)
 	for a in Politics.ALLY_ORDER:
 		var al: Dictionary = Politics.ALLIES[a]
 		var v := _card(box)
 		var is_lost: bool = p.lost(a)
-		_text(v, "%s  ·  %s%s" % [al["name"], al["title"], "   ·   LOST" if is_lost else ""], Ink.accent(0.9) if is_lost else INK, 12)
+		_text(
+			v,
+			"%s  ·  %s%s" % [al["name"], al["title"], "   ·   LOST" if is_lost else ""],
+			Ink.accent(0.9) if is_lost else INK,
+			12
+		)
 		v.add_child(StandBar.new(p.standing(a), is_lost))
-		_text(v, ("Standing %d. Holds %s." % [p.standing(a), al["holds"]]) + ((" " + String(al["lost"])) if is_lost else ""), GREY, 10)
+		_text(
+			v,
+			(
+				("Standing %d. Holds %s." % [p.standing(a), al["holds"]])
+				+ ((" " + String(al["lost"])) if is_lost else "")
+			),
+			GREY,
+			10
+		)
 	_sep()
-	_text(box, "TRUST IN POLICE, BY WARD  ·  it sets how many tips each ward's community group gives (none below 25)", INK, 12)
+	_text(
+		box,
+		"TRUST IN POLICE, BY WARD  ·  below 25, a ward's community group stops sharing tips",
+		INK,
+		12
+	)
 	var bb := ""
 	for i in Situations.WARDS.size():
 		var t: int = int(p.trust[i])
 		var start: int = int(Situations.WARDS[i]["trust"])
 		var d := t - start
-		bb += "%-10s %3d   %s\n" % [Situations.WARDS[i]["name"], t, ("(%s%d since you took command)" % ["+" if d > 0 else "", d]) if d != 0 else ""]
+		bb += (
+			"%-10s %3d   %s\n"
+			% [
+				Situations.WARDS[i]["name"],
+				t,
+				("(%s%d since you took command)" % ["+" if d > 0 else "", d]) if d != 0 else ""
+			]
+		)
 	_rich(box, "[code]" + bb + "[/code]")
-	var stories: int = p.pending.filter(func(x): return x["kind"] in ["story", "leak", "neglect"]).size()
+	var stories: int = (
+		p.pending.filter(func(x): return x["kind"] in ["story", "leak", "neglect"]).size()
+	)
 	var suits: Array = p.pending.filter(func(x): return x["kind"] == "lawsuit")
 	var owed := 0
 	for su in suits:
 		owed += int(su["cost"])
-	_text(box, "The press is looking into %d thing%s. %d lawsuit%s pending%s." % [stories, "" if stories == 1 else "s", suits.size(), "" if suits.size() == 1 else "s",
-		(" (about $%s)" % Department.money(owed)) if owed > 0 else ""], INK, 11)
+	_text(
+		box,
+		(
+			"%d public record item%s pending. %d lawsuit%s not yet settled%s."
+			% [
+				stories,
+				"" if stories == 1 else "s",
+				suits.size(),
+				"" if suits.size() == 1 else "s",
+				(" (about $%s)" % Department.money(owed)) if owed > 0 else ""
+			]
+		),
+		INK,
+		11
+	)
 	_btn(box, "<  Back to the board", func(): show_board())
 
 
@@ -344,11 +726,20 @@ func _election_night(lines: Array) -> void:
 	var c = main.campaign
 	var p = c.politics
 	var e: Dictionary = p.result.get("ending", {})
-	_title("ELECTION NIGHT")
+	_title("ELECTION NIGHT  ·  THE CAMPAIGN IS FILED")
+	_story_card(box, Story.current(c))
 	var votes: Dictionary = p.result.get("votes", {})
 	var bb := ""
 	for cid in Politics.CAND_ORDER:
-		bb += "%s%s   %.1f%%%s\n" % ["[b]" if cid == e.get("winner", "") else "", Politics.CANDIDATES[cid]["name"], float(votes.get(cid, 0.0)), "[/b]" if cid == e.get("winner", "") else ""]
+		bb += (
+			"%s%s   %.1f%%%s\n"
+			% [
+				"[b]" if cid == e.get("winner", "") else "",
+				Politics.CANDIDATES[cid]["name"],
+				float(votes.get(cid, 0.0)),
+				"[/b]" if cid == e.get("winner", "") else ""
+			]
+		)
 	_rich(box, bb)
 	var hv := _card(box)
 	_text(hv, String(e.get("head", "")), Ink.accent(0.9) if not e.get("keep", false) else INK, 16)
@@ -363,8 +754,9 @@ func _election_night(lines: Array) -> void:
 	_btn(hb, "Roster", func(): _roster())
 	_btn(hb, "Budget", func(): _budget())
 	var hb3 := _h(box)
+	_btn(hb3, "Campaign file", func(): _story_file())
 	_btn(hb3, "<  Main menu", func(): main.go_title())
-	_btn(hb3, "New campaign", func(): main.ops_new_campaign())
+	_btn(hb3, "New story", func(): main.ops_new_campaign())
 
 
 ## The money, morale and open cases at a glance (v0.8.5).
@@ -372,17 +764,43 @@ func _dept_strip(parent: Control) -> void:
 	var d = main.campaign.dept
 	var v := _card(parent)
 	var red: bool = d.balance < 0
-	_text(v, "ACCOUNT  $%s%s   ·   allocation $%s a week   ·   payroll $%s" % [Department.money(d.balance),
-		"  (FROZEN)" if red else "", Department.money(d.allocation), Department.money(d.payroll())],
-		Ink.accent(0.9) if red else INK, 12)
+	_text(
+		v,
+		(
+			"ACCOUNT  $%s%s   ·   allocation $%s a week   ·   payroll $%s"
+			% [
+				Department.money(d.balance),
+				"  (FROZEN)" if red else "",
+				Department.money(d.allocation),
+				Department.money(d.payroll())
+			]
+		),
+		Ink.accent(0.9) if red else INK,
+		12
+	)
 	var nc: int = d.open_cases().size()
-	_text(v, "Morale %d%s   ·   %d internal affairs case%s open" % [d.morale,
-		" (low: more stress in every operation)" if d.morale < Courses.MORALE0 else "",
-		nc, "" if nc == 1 else "s"], GREY, 11)
+	_text(
+		v,
+		(
+			"Morale %d%s   ·   %d internal affairs case%s open"
+			% [
+				d.morale,
+				" (low: more stress in every operation)" if d.morale < Courses.MORALE0 else "",
+				nc,
+				"" if nc == 1 else "s"
+			]
+		),
+		GREY,
+		11
+	)
 
 
-const STATUS_WORDS := {"injured": "out injured until week %d", "training": "on a course until week %d",
-	"academy": "at the academy until week %d", "suspended": "suspended until week %d"}
+const STATUS_WORDS := {
+	"injured": "out injured until week %d",
+	"training": "on a course until week %d",
+	"academy": "at the academy until week %d",
+	"suspended": "suspended until week %d"
+}
 
 
 func _status_of(r: Dictionary, busy: Dictionary) -> String:
@@ -413,23 +831,62 @@ func _roster() -> void:
 		_text(box, flash, INK, 11)
 		flash = ""
 	var hh := _h(box)
-	_btn(hh, "Hire a recruit ($%s)" % Department.money(Courses.RECRUIT + Equipment.cost(Equipment.default_kit())), func(): _hire(false))
-	_btn(hh, "Hire laterally ($%s)" % Department.money(Courses.LATERAL + Equipment.cost(Equipment.default_kit())), func(): _hire(true))
-	_text(box, "A recruit spends two weeks at the academy; a lateral hire has three to six years elsewhere and reports at once. Click an officer to open their file: training, and dismissal.", GREY, 10)
-	var order: Array = d.officers.filter(func(r): return r["status"] not in ["dead", "fired", "resigned"])
-	order.sort_custom(func(a, b):
-		var ra: int = Orders.rank_i(a)
-		var rb: int = Orders.rank_i(b)
-		if ra != rb:
-			return ra > rb
-		return int(a["xp"]) > int(b["xp"]))
+	_btn(
+		hh,
+		(
+			"Hire a recruit ($%s)"
+			% Department.money(Courses.RECRUIT + Equipment.cost(Equipment.default_kit()))
+		),
+		func(): _hire(false)
+	)
+	_btn(
+		hh,
+		(
+			"Hire laterally ($%s)"
+			% Department.money(Courses.LATERAL + Equipment.cost(Equipment.default_kit()))
+		),
+		func(): _hire(true)
+	)
+	_text(
+		box,
+		"A recruit spends two weeks at the academy; a lateral hire has three to six years elsewhere and reports at once. Click an officer to open their file: training, and dismissal.",
+		GREY,
+		10
+	)
+	var order: Array = d.officers.filter(
+		func(r): return r["status"] not in ["dead", "fired", "resigned"]
+	)
+	order.sort_custom(
+		func(a, b):
+			var ra: int = Orders.rank_i(a)
+			var rb: int = Orders.rank_i(b)
+			if ra != rb:
+				return ra > rb
+			return int(a["xp"]) > int(b["xp"])
+	)
 	var busy: Dictionary = main.campaign.committed()
 	for r in order:
 		var st: String = _status_of(r, busy)
 		var oid: String = r["id"]
-		var b := _btn(box, "%s %s  ·  %d yr  ·  %s %d xp  ·  J %d  ·  $%s/wk  ·  %s" % [r["rank"], r["name"], int(r.get("years", 0)),
-			Habits.EXP_NAMES[int(r["exp"])], int(r["xp"]), int(r["judgment"]), Department.money(Courses.pay(r)), st],
-			func(): roster_open = "" if roster_open == oid else oid; _roster())
+		var b := _btn(
+			box,
+			(
+				"%s %s  ·  %d yr  ·  %s %d xp  ·  J %d  ·  $%s/wk  ·  %s"
+				% [
+					r["rank"],
+					r["name"],
+					int(r.get("years", 0)),
+					Habits.EXP_NAMES[int(r["exp"])],
+					int(r["xp"]),
+					int(r["judgment"]),
+					Department.money(Courses.pay(r)),
+					st
+				]
+			),
+			func():
+				roster_open = "" if roster_open == oid else oid
+				_roster()
+		)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.clip_text = true
 		b.custom_minimum_size = Vector2(10, 0)
@@ -439,9 +896,23 @@ func _roster() -> void:
 			b.add_theme_color_override("font_color", GREY)
 		if roster_open == oid:
 			_officer_card(r, busy)
-	var gone: Array = d.officers.filter(func(r): return r["status"] in ["dead", "fired", "resigned"])
+	var gone: Array = d.officers.filter(
+		func(r): return r["status"] in ["dead", "fired", "resigned"]
+	)
 	if not gone.is_empty():
-		_text(box, "No longer serving: " + ", ".join(gone.map(func(r): return "%s %s (%s)" % [r["rank"], r["name"], _status_of(r, {})])), GREY, 10)
+		_text(
+			box,
+			(
+				"No longer serving: "
+				+ ", ".join(
+					gone.map(
+						func(r): return "%s %s (%s)" % [r["rank"], r["name"], _status_of(r, {})]
+					)
+				)
+			),
+			GREY,
+			10
+		)
 	_btn(box, "<  Back to the board", func(): show_board())
 
 
@@ -449,43 +920,119 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 	var d = main.campaign.dept
 	var v := _card(box)
 	var good: Array = r["good"]
-	_text(v, "%d good habits%s. Personality: %s. Trauma %.1f. Courses: %s." % [good.size(),
-		", tactical certified" if r.get("tactical", false) else "", String(r["personality"]) if r["personality"] != "" else "none",
-		float(r["trauma"]), ", ".join(r.get("courses", []).map(func(c): return Courses.COURSES[c]["name"])) if not r.get("courses", []).is_empty() else "none"], INK, 11)
+	_text(
+		v,
+		(
+			"%d good habits%s. Personality: %s. Trauma %.1f. Courses: %s."
+			% [
+				good.size(),
+				", tactical certified" if r.get("tactical", false) else "",
+				String(r["personality"]) if r["personality"] != "" else "none",
+				float(r["trauma"]),
+				(
+					", ".join(r.get("courses", []).map(func(c): return Courses.COURSES[c]["name"]))
+					if not r.get("courses", []).is_empty()
+					else "none"
+				)
+			]
+		),
+		INK,
+		11
+	)
 	if r["status"] in ["active", "injured", "training", "academy"]:
 		var cur: String = String(r.get("course", ""))
 		var q: Array = r.get("queue", [])
-		_text(v, "TRAINING%s%s" % [
-			("  ·  on the %s course until week %d" % [Courses.COURSES[cur]["name"].to_lower(), int(r.get("course_until", 0))]) if cur != "" else "",
-			("  ·  queued: " + ", ".join(q.map(func(c): return Courses.COURSES[c]["name"].to_lower()))) if not q.is_empty() else ""], GREY, 10)
+		_text(
+			v,
+			(
+				"TRAINING%s%s"
+				% [
+					(
+						(
+							"  ·  on the %s course until week %d"
+							% [
+								Courses.COURSES[cur]["name"].to_lower(),
+								int(r.get("course_until", 0))
+							]
+						)
+						if cur != ""
+						else ""
+					),
+					(
+						(
+							"  ·  queued: "
+							+ ", ".join(
+								q.map(func(c): return Courses.COURSES[c]["name"].to_lower())
+							)
+						)
+						if not q.is_empty()
+						else ""
+					)
+				]
+			),
+			GREY,
+			10
+		)
 		for qc in q:
 			var hq := _h(v)
 			_lab(hq, "queued: %s" % Courses.COURSES[qc]["name"], GREY, 10)
 			var qid: String = qc
-			_btn(hq, "drop", func(): main.campaign.dept.unqueue(r, qid); main.ops_dept_changed(); _roster())
+			_btn(
+				hq,
+				"drop",
+				func():
+					main.campaign.dept.unqueue(r, qid)
+					main.ops_dept_changed()
+					_roster()
+			)
 		for cid in Courses.COURSE_ORDER:
 			if cid == "uof":
 				continue
 			var c: Dictionary = Courses.COURSES[cid]
 			var classroom: bool = bool(c.get("classroom", false))
-			var can_now: bool = cur == "" and not busy.has(r["id"]) and (r["status"] == "active" or (r["status"] == "injured" and classroom))
+			var can_now: bool = (
+				cur == ""
+				and not busy.has(r["id"])
+				and (r["status"] == "active" or (r["status"] == "injured" and classroom))
+			)
 			var why: String = Courses.blocked(r, cid)
 			if why == "" and can_now and d.frozen():
 				why = "account in the red (it can still be queued)"
 				can_now = false
 			var h := _h(v)
-			var cb := _btn(h, "%s: %s  $%s  %dw%s" % ["Send" if can_now else "Queue", c["name"], Department.money(int(c["cost"])), int(c["weeks"]),
-				"  (classroom)" if classroom else ""], func(): _train(r, cid))
-			cb.disabled = why != "" and not (why.begins_with("account in the red") and q.size() < Courses.QUEUE_MAX)
+			var cb := _btn(
+				h,
+				(
+					"%s: %s  $%s  %dw%s"
+					% [
+						"Send" if can_now else "Queue",
+						c["name"],
+						Department.money(int(c["cost"])),
+						int(c["weeks"]),
+						"  (classroom)" if classroom else ""
+					]
+				),
+				func(): _train(r, cid)
+			)
+			cb.disabled = (
+				why != ""
+				and not (why.begins_with("account in the red") and q.size() < Courses.QUEUE_MAX)
+			)
 			if q.size() >= Courses.QUEUE_MAX and not can_now:
 				cb.disabled = true
 				why = "queue full"
 			cb.add_theme_font_size_override("font_size", 11)
 			var tip: String = String(c["desc"])
 			if cid == "judgment":
-				tip += "\nAt judgment %d the base chance of misjudging a civilian is %.2f%% per judgment (before stress, night, phones and range); at %d it is %.2f%%." % [
-					int(r["judgment"]), Courses.misjudge_term(int(r["judgment"])) * 100.0,
-					mini(90, int(r["judgment"]) + 6), Courses.misjudge_term(mini(90, int(r["judgment"]) + 6)) * 100.0]
+				tip += (
+					"\nAt judgment %d the base chance of misjudging a civilian is %.2f%% per judgment (before stress, night, phones and range); at %d it is %.2f%%."
+					% [
+						int(r["judgment"]),
+						Courses.misjudge_term(int(r["judgment"])) * 100.0,
+						mini(90, int(r["judgment"]) + 6),
+						Courses.misjudge_term(mini(90, int(r["judgment"]) + 6)) * 100.0
+					]
+				)
 			if not can_now and why == "":
 				tip += "\nQueued courses start themselves when the officer can take them, and are paid for then."
 			cb.tooltip_text = tip + (("\nNot now: " + why) if why != "" else "")
@@ -493,11 +1040,17 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 				_lab(h, why, GREY, 10)
 		if r["status"] == "active" and cur == "" and not busy.has(r["id"]):
 			var hc := _h(v)
-			var coh := _btn(hc, "Refresher with a bonded cohort (3+ at 3/4 cost)", func(): _cohort(r))
+			var coh := _btn(
+				hc, "Refresher with a bonded cohort (3+ at 3/4 cost)", func(): _cohort(r)
+			)
 			coh.add_theme_font_size_override("font_size", 11)
 			coh.tooltip_text = "Send this officer and up to three available colleagues he has served with on the close-quarters refresher together: three or more pay three quarters each, and every pair gains a bond (squad cohesion)."
 	var h2 := _h(v)
-	var fb := _btn(h2, "Dismiss ($%s severance)" % Department.money(Courses.pay(r) * Courses.SEVERANCE_WEEKS), func(): _dismiss(r))
+	var fb := _btn(
+		h2,
+		"Dismiss ($%s severance)" % Department.money(Courses.pay(r) * Courses.SEVERANCE_WEEKS),
+		func(): _dismiss(r)
+	)
 	fb.add_theme_font_size_override("font_size", 11)
 	_lab(h2, "the union remembers: morale -6", GREY, 10)
 
@@ -505,8 +1058,17 @@ func _officer_card(r: Dictionary, busy: Dictionary) -> void:
 func _train(r: Dictionary, cid: String) -> void:
 	var res: Dictionary = main.campaign.dept.enrol_or_queue(r, cid)
 	if bool(res.get("ok", false)):
-		flash = ("%s %s is on the %s course." % [r["rank"], r["name"], Courses.COURSES[cid]["name"].to_lower()]) if res.get("mode", "") == "now" \
-			else ("%s queued for %s %s: it starts when he can take it." % [Courses.COURSES[cid]["name"], r["rank"], r["name"]])
+		flash = (
+			(
+				"%s %s is on the %s course."
+				% [r["rank"], r["name"], Courses.COURSES[cid]["name"].to_lower()]
+			)
+			if res.get("mode", "") == "now"
+			else (
+				"%s queued for %s %s: it starts when he can take it."
+				% [Courses.COURSES[cid]["name"], r["rank"], r["name"]]
+			)
+		)
 	else:
 		flash = "Not possible: " + String(res.get("why", "")) + "."
 	main.ops_dept_changed()
@@ -518,13 +1080,35 @@ func _train(r: Dictionary, cid: String) -> void:
 func _cohort(r: Dictionary) -> void:
 	var d = main.campaign.dept
 	var busy: Dictionary = main.campaign.committed()
-	var mates: Array = d.officers.filter(func(x): return x["id"] != r["id"] and x["status"] == "active" and String(x.get("course", "")) == "" \
-		and not busy.has(x["id"]) and Courses.blocked(x, "cqb") == "")
-	mates.sort_custom(func(a, b): return d.bond(r["id"], a["id"]) > d.bond(r["id"], b["id"]) if d.bond(r["id"], a["id"]) != d.bond(r["id"], b["id"]) else int(a["xp"]) > int(b["xp"]))
+	var mates: Array = d.officers.filter(
+		func(x):
+			return (
+				x["id"] != r["id"]
+				and x["status"] == "active"
+				and String(x.get("course", "")) == ""
+				and not busy.has(x["id"])
+				and Courses.blocked(x, "cqb") == ""
+			)
+	)
+	mates.sort_custom(
+		func(a, b):
+			return (
+				d.bond(r["id"], a["id"]) > d.bond(r["id"], b["id"])
+				if d.bond(r["id"], a["id"]) != d.bond(r["id"], b["id"])
+				else int(a["xp"]) > int(b["xp"])
+			)
+	)
 	var group: Array = [r] + mates.slice(0, 3)
 	var res: Dictionary = d.enrol_cohort(group)
 	if bool(res.get("ok", false)):
-		flash = "Cohort refresher: %s ($%s%s)." % [", ".join(res["started"]), Department.money(int(res["cost"])), ", at the cohort rate" if res["discounted"] else ""]
+		flash = (
+			"Cohort refresher: %s ($%s%s)."
+			% [
+				", ".join(res["started"]),
+				Department.money(int(res["cost"])),
+				", at the cohort rate" if res["discounted"] else ""
+			]
+		)
 	else:
 		flash = "No cohort: " + String(res.get("why", "")) + "."
 	main.ops_dept_changed()
@@ -536,15 +1120,46 @@ func _cohort(r: Dictionary) -> void:
 func _applicants() -> void:
 	var d = main.campaign.dept
 	var pool: Array = d.applicants_now()
-	_text(box, "APPLICANTS  ·  week %d%s" % [d.week, "  (hiring frozen: the account is in the red)" if d.frozen() else ""], INK, 12)
+	_text(
+		box,
+		(
+			"APPLICANTS  ·  week %d%s"
+			% [d.week, "  (hiring frozen: the account is in the red)" if d.frozen() else ""]
+		),
+		INK,
+		12
+	)
 	if pool.is_empty():
-		_text(box, "Nobody left to hire this week: the pool was taken from, or walked. A fresh pool applies next week.", GREY, 10)
+		_text(
+			box,
+			"Nobody left to hire this week: the pool was taken from, or walked. A fresh pool applies next week.",
+			GREY,
+			10
+		)
 		return
-	_text(box, "Hire one and the rest walk. A recruit spends two weeks at the academy; a lateral hire has years elsewhere and reports at once. Whoever nobody hires walks at the end of the week.", GREY, 10)
+	_text(
+		box,
+		"Hire one and the rest walk. A recruit spends two weeks at the academy; a lateral hire has years elsewhere and reports at once. Whoever nobody hires walks at the end of the week.",
+		GREY,
+		10
+	)
 	for r in pool:
 		var v := _card(box)
-		var who: String = "%s %s  ·  Patrol  ·  %s" % [r["rank"], r["name"],
-			("lateral, %d years elsewhere, %s" % [int(r.get("years", 0)), Habits.EXP_NAMES[int(r["exp"])]]) if r.get("lateral", false) else "recruit (academy, two weeks)"]
+		var who: String = (
+			"%s %s  ·  Patrol  ·  %s"
+			% [
+				r["rank"],
+				r["name"],
+				(
+					(
+						"lateral, %d years elsewhere, %s"
+						% [int(r.get("years", 0)), Habits.EXP_NAMES[int(r["exp"])]]
+					)
+					if r.get("lateral", false)
+					else "recruit (academy, two weeks)"
+				)
+			]
+		)
 		_text(v, who, INK, 12).tooltip_text = UI.officer_file(r)
 		var traits: Array = []
 		for tr in r.get("traits", []):
@@ -557,21 +1172,50 @@ func _applicants() -> void:
 			plus.append("+" + String(q))
 		for q2 in r["ech"].get("minus", []):
 			plus.append("-" + String(q2))
-		_text(v, "Judgment %d  ·  temper %d  ·  integrity %d%s%s%s" % [int(r["judgment"]), int(r["temper"]), int(r["integrity"]),
-			("  ·  " + ", ".join(traits)) if not traits.is_empty() else "",
-			("  ·  " + "  ".join(plus)) if not plus.is_empty() else "",
-			("  ·  personality: %s (%s)" % [String(r["personality"]).to_lower(), ", ".join(bad)]) if r["personality"] != "" else ""], GREY, 10)
+		_text(
+			v,
+			(
+				"Judgment %d  ·  temper %d  ·  integrity %d%s%s%s"
+				% [
+					int(r["judgment"]),
+					int(r["temper"]),
+					int(r["integrity"]),
+					("  ·  " + ", ".join(traits)) if not traits.is_empty() else "",
+					("  ·  " + "  ".join(plus)) if not plus.is_empty() else "",
+					(
+						(
+							"  ·  personality: %s (%s)"
+							% [String(r["personality"]).to_lower(), ", ".join(bad)]
+						)
+						if r["personality"] != ""
+						else ""
+					)
+				]
+			),
+			GREY,
+			10
+		)
 		var h := _h(v)
 		var rec: Dictionary = r
-		var hb := _btn(h, "Hire  ($%s, then $%s a week)" % [Department.money(Department.applicant_cost(r)), Department.money(Courses.pay(r))],
-			func(): _hire_applicant(rec))
+		var hb := _btn(
+			h,
+			(
+				"Hire  ($%s, then $%s a week)"
+				% [Department.money(Department.applicant_cost(r)), Department.money(Courses.pay(r))]
+			),
+			func(): _hire_applicant(rec)
+		)
 		hb.disabled = d.frozen()
 		hb.tooltip_text = String(UI.officer_file(r))
 
 
 func _hire_applicant(r: Dictionary) -> void:
 	var got: Dictionary = main.campaign.dept.choose_applicant(r)
-	flash = ("Hired %s %s." % [got["rank"], got["name"]]) if not got.is_empty() else "Hiring is frozen while the account is in the red."
+	flash = (
+		("Hired %s %s." % [got["rank"], got["name"]])
+		if not got.is_empty()
+		else "Hiring is frozen while the account is in the red."
+	)
 	main.ops_dept_changed()
 	_roster()
 
@@ -595,7 +1239,12 @@ func _budget() -> void:
 	if flash != "":
 		_text(box, flash, INK, 11)
 		flash = ""
-	_text(box, "The city's allocation comes in and the payroll goes out at the end of each week. Overtime (a callout plus time on target; static duty at a rally at half rate), restocking, kit, hiring, training, medical bills and death benefits come out as they happen. In the red, hiring, training and new kit are frozen.", GREY, 10)
+	_text(
+		box,
+		"The city's allocation comes in and the payroll goes out at the end of each week. Overtime (a callout plus time on target; static duty at a rally at half rate), restocking, kit, hiring, training, medical bills and death benefits come out as they happen. In the red, hiring, training and new kit are frozen.",
+		GREY,
+		10
+	)
 	_forecast()
 	_grant_row()
 	var bb := ""
@@ -607,10 +1256,23 @@ func _budget() -> void:
 		var net := 0
 		for le in rows:
 			net += int(le["amount"])
-		bb += "[b]WEEK %d[/b]   net %s$%s\n" % [wk, "+" if net >= 0 else "-", Department.money(absi(net))]
+		bb += (
+			"[b]WEEK %d[/b]   net %s$%s\n"
+			% [wk, "+" if net >= 0 else "-", Department.money(absi(net))]
+		)
 		for le in rows:
 			var a: int = int(le["amount"])
-			bb += ("   %s$%s   %s\n" % ["+" if a >= 0 else "-", Department.money(absi(a)), le["item"]]) if a >= 0 else ("   [color=#b31f26]-$%s[/color]   %s\n" % [Department.money(absi(a)), le["item"]])
+			bb += (
+				(
+					"   %s$%s   %s\n"
+					% ["+" if a >= 0 else "-", Department.money(absi(a)), le["item"]]
+				)
+				if a >= 0
+				else (
+					"   [color=#b31f26]-$%s[/color]   %s\n"
+					% [Department.money(absi(a)), le["item"]]
+				)
+			)
 		shown += 1
 	if shown == 0:
 		bb = "Nothing spent yet this campaign."
@@ -632,16 +1294,48 @@ func _forecast() -> void:
 		var bal: int = int(row["balance"])
 		if bal < 0 and worst == 0:
 			worst = int(row["week"])
-		_text(v, "Week %d:  +$%s allocation  -$%s payroll%s    ->    $%s" % [int(row["week"]),
-			Department.money(int(row["allocation"])), Department.money(int(row["payroll"])),
-			("  -$%s a lawsuit settles" % Department.money(suits)) if suits > 0 else "",
-			Department.money(bal)], Ink.accent(0.9) if bal < 0 else INK, 11)
+		_text(
+			v,
+			(
+				"Week %d:  +$%s allocation  -$%s payroll%s    ->    $%s"
+				% [
+					int(row["week"]),
+					Department.money(int(row["allocation"])),
+					Department.money(int(row["payroll"])),
+					("  -$%s a lawsuit settles" % Department.money(suits)) if suits > 0 else "",
+					Department.money(bal)
+				]
+			),
+			Ink.accent(0.9) if bal < 0 else INK,
+			11
+		)
 	if worst > 0:
-		_text(v, "On these numbers the account is in the red at week %d: hiring, training and new kit freeze there, and the council counts the weeks. Spend less, settle nothing new, or ask the committee (below) before it lands." % worst, Ink.accent(0.9), 10)
+		_text(
+			v,
+			(
+				"On these numbers the account is in the red at week %d: hiring, training and new kit freeze there, and the council counts the weeks. Spend less, settle nothing new, or ask the committee (below) before it lands."
+				% worst
+			),
+			Ink.accent(0.9),
+			10
+		)
 	var qc: int = d.queued_cost()
 	if qc > 0:
-		_text(v, "Not in the table: $%s of queued courses, paid when each starts." % Department.money(qc), GREY, 10)
-	_text(v, "Not knowable, so not in the table: next week's overtime, wounds, and any lawsuit not yet filed.", GREY, 10)
+		_text(
+			v,
+			(
+				"Not in the table: $%s of queued courses, paid when each starts."
+				% Department.money(qc)
+			),
+			GREY,
+			10
+		)
+	_text(
+		v,
+		"Not knowable, so not in the table: next week's overtime, wounds, and any lawsuit not yet filed.",
+		GREY,
+		10
+	)
 
 
 ## The grant (Q8): the one way to bring money in, while the budget chair is still
@@ -652,10 +1346,14 @@ func _grant_row() -> void:
 	_text(v, "A CITY GRANT", INK, 12)
 	var why: String = p.can_grant(main.campaign.dept.week)
 	var h := _h(v)
-	var gb := _btn(h, "Apply for a grant ($%s)" % Department.money(Politics.GRANT_AMOUNT), func(): _grant())
+	var gb := _btn(
+		h, "Apply for a grant ($%s)" % Department.money(Politics.GRANT_AMOUNT), func(): _grant()
+	)
 	gb.disabled = why != ""
-	gb.tooltip_text = "One-time money from the budget committee. Needs Marguerite Duff at %d standing or better; asking costs %d of it, and the committee will not be asked again for %d weeks." % [
-		Politics.GRANT_STANDING, Politics.GRANT_FAVOUR, Politics.GRANT_COOLDOWN]
+	gb.tooltip_text = (
+		"One-time money from the budget committee. Needs Marguerite Duff at %d standing or better; asking costs %d of it, and the committee will not be asked again for %d weeks."
+		% [Politics.GRANT_STANDING, Politics.GRANT_FAVOUR, Politics.GRANT_COOLDOWN]
+	)
 	if why != "":
 		_lab(h, why, GREY, 10)
 	else:
@@ -663,7 +1361,9 @@ func _grant_row() -> void:
 
 
 func _grant() -> void:
-	var res: Dictionary = main.campaign.politics.apply_grant(main.campaign.dept.week, main.campaign.dept)
+	var res: Dictionary = main.campaign.politics.apply_grant(
+		main.campaign.dept.week, main.campaign.dept
+	)
 	flash = String(res.get("line", ""))
 	main.ops_dept_changed()
 	_budget()
@@ -679,33 +1379,121 @@ func _cases() -> void:
 	if flash != "":
 		_text(box, flash, INK, 11)
 		flash = ""
-	_text(box, "Every finding the incident record ties to an officer, and every broken order, opens a case. Clear it, send the officer to a use-of-force review, suspend them for two weeks without pay, or dismiss them. A case nobody decides lapses after three weeks. The city watches: the union your discipline, the coalition and the DA what you clear.", GREY, 10)
+	_text(
+		box,
+		"A finding tied to an officer—or an order left broken—opens a case. Clear it, order a use-of-force review, suspend the officer without pay for two weeks, or dismiss them. A case without a decision lapses after three weeks. The union watches discipline; the coalition and district attorney watch the cases you clear.",
+		GREY,
+		10
+	)
 	var open: Array = d.open_cases()
 	if open.is_empty():
 		_text(box, "No open cases.", INK, 12)
 	for c in open:
 		var r: Dictionary = d.get_officer(c["officer"])
 		var v := _card(box)
-		_text(v, "%s  ·  %s %s  ·  week %d" % [c["id"], r.get("rank", ""), r.get("name", "?"), int(c["week"])], INK, 13)
-		_text(v, "%s: %s (%s). Evidence: %s." % [Department.CASE_KINDS.get(c["kind"], c["kind"]), c["text"], c["place"], c["strength"]], INK, 11)
-		_text(v, "Judgment %d  ·  integrity %d  ·  %d earlier case%s" % [int(r.get("judgment", 0)), int(r.get("integrity", 0)),
-			d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size(),
-			"" if d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size() == 1 else "s"], GREY, 10)
+		_text(
+			v,
+			(
+				"%s  ·  %s %s  ·  week %d"
+				% [c["id"], r.get("rank", ""), r.get("name", "?"), int(c["week"])]
+			),
+			INK,
+			13
+		)
+		_text(
+			v,
+			(
+				"%s: %s (%s). Evidence: %s."
+				% [
+					Department.CASE_KINDS.get(c["kind"], c["kind"]),
+					c["text"],
+					c["place"],
+					c["strength"]
+				]
+			),
+			INK,
+			11
+		)
+		_text(
+			v,
+			(
+				"Judgment %d  ·  integrity %d  ·  %d earlier case%s"
+				% [
+					int(r.get("judgment", 0)),
+					int(r.get("integrity", 0)),
+					(
+						d
+						. cases
+						. filter(
+							func(x): return x["officer"] == c["officer"] and x["status"] == "closed"
+						)
+						. size()
+					),
+					(
+						""
+						if (
+							(
+								d
+								. cases
+								. filter(
+									func(x):
+										return (
+											x["officer"] == c["officer"] and x["status"] == "closed"
+										)
+								)
+								. size()
+							)
+							== 1
+						)
+						else "s"
+					)
+				]
+			),
+			GREY,
+			10
+		)
 		var stmt: String = String(c.get("statement", ""))
 		if stmt == "disagrees":
-			_text(v, "The officer's statement does not match the %s. Clearing this reads as a cover-up, and it is the kind of detail that leaks." % ("body camera" if c["strength"] == "video" else "witnesses"), Ink.accent(0.9), 10)
+			_text(
+				v,
+				(
+					"The officer's statement does not match the %s. Clearing this reads as a cover-up, and it is the kind of detail that leaks."
+					% ("body camera" if c["strength"] == "video" else "witnesses")
+				),
+				Ink.accent(0.9),
+				10
+			)
 		elif stmt == "matches":
 			_text(v, "The officer's statement matches the record.", GREY, 10)
 		var wit: Dictionary = d.get_officer(String(c.get("witness", "")))
 		var tst: String = String(c.get("testimony", ""))
 		if not wit.is_empty() and tst in ["corroborates", "contradicts"]:
-			_text(v, "%s %s, who was there, %s the record in his statement." % [wit.get("rank", ""), wit.get("name", ""),
-				"corroborates" if tst == "corroborates" else "contradicts"], GREY, 10)
+			_text(
+				v,
+				(
+					"%s %s, who was there, %s the record in a statement."
+					% [
+						wit.get("rank", ""),
+						wit.get("name", ""),
+						"corroborates" if tst == "corroborates" else "contradicts"
+					]
+				),
+				GREY,
+				10
+			)
 		var h := _h(v)
 		var cid: String = c["id"]
 		_btn(h, "Clear", func(): _decide(cid, "clear"))
-		var rb := _btn(h, "Review ($%s)" % Department.money(int(Courses.COURSES["uof"]["cost"])), func(): _decide(cid, "retrain"))
-		rb.disabled = r.get("status", "") not in ["active", "injured"] or d.frozen() or main.campaign.committed().has(c["officer"])
+		var rb := _btn(
+			h,
+			"Review ($%s)" % Department.money(int(Courses.COURSES["uof"]["cost"])),
+			func(): _decide(cid, "retrain")
+		)
+		rb.disabled = (
+			r.get("status", "") not in ["active", "injured"]
+			or d.frozen()
+			or main.campaign.committed().has(c["officer"])
+		)
 		rb.tooltip_text = "A classroom course: a wounded officer can take the review while recovering."
 		_btn(h, "Suspend", func(): _decide(cid, "suspend"))
 		_btn(h, "Dismiss", func(): _decide(cid, "fire"))
@@ -715,7 +1503,15 @@ func _cases() -> void:
 		for k in range(closed.size() - 1, maxi(-1, closed.size() - 13), -1):
 			var c2: Dictionary = closed[k]
 			var r2: Dictionary = d.get_officer(c2["officer"])
-			bb += "%s  %s  ·  %s  ·  %s\n" % [c2["id"], r2.get("name", "?"), Department.CASE_KINDS.get(c2["kind"], c2["kind"]).to_lower(), c2["decision"]]
+			bb += (
+				"%s  %s  ·  %s  ·  %s\n"
+				% [
+					c2["id"],
+					r2.get("name", "?"),
+					Department.CASE_KINDS.get(c2["kind"], c2["kind"]).to_lower(),
+					c2["decision"]
+				]
+			)
 		_text(box, "CLOSED", GREY, 10)
 		_rich(box, bb)
 	_btn(box, "<  Back to the board", func(): show_board())
@@ -739,8 +1535,11 @@ func show_plan() -> void:
 	var s: Dictionary = main.cur_sit
 	_title(s["title"], 15)
 	var tabs := _h(box)
+	var select_tab := func(on: bool, tab_i: int) -> void:
+		if on:
+			_tab(tab_i)
 	for i in 3:
-		var b := _btn(tabs, ["1 Briefing", "2 Force", "3 Orders"][i], func(on): if on: _tab(i), true)
+		var b := _btn(tabs, ["1 Briefing", "2 Force", "3 Orders"][i], select_tab.bind(i), true)
 		b.set_pressed_no_signal(i == tab)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sep()
@@ -748,13 +1547,27 @@ func show_plan() -> void:
 		_text(box, flash, INK, 11)
 		flash = ""
 	if bool(Settings.get_v("tips")) and main.campaign.week() <= 2:
-		_text(box, ["Tip: the briefing is never complete. Estimates say how sure they are; canvassing buys two more tips at the cost of an officer for the week.",
-			"Tip: each officer's list sets their squad (or none). The leader is the highest rank; the squad follows as many orders as the leader's experience allows. Kit is bought from the budget.",
-			"Tip: give each squad its objectives and constraints. Click the map to place them. The red line is the plan: it will not survive the house."][tab], GREY, 10)
+		_text(
+			box,
+			[
+				"Tip: confirmed facts and estimates are marked separately. Canvassing adds two tips, but takes an officer for the week.",
+				"Tip: each officer's assignment sets their squad. The highest rank leads; experience limits how many orders the squad can carry out. Kit comes from the department account.",
+				"Tip: set objectives and constraints for each squad, then place them on the map. The plan is a proposal. The rooms are still unknown."
+			][tab],
+			GREY,
+			10
+		)
 	if tab == 1:
 		var d = main.campaign.dept
-		_text(box, "Account $%s%s. New kit is bought at cost; kit handed back sells for half." % [Department.money(d.balance),
-			" (frozen: no new kit)" if d.frozen() else ""], Ink.accent(0.9) if d.frozen() else GREY, 10)
+		_text(
+			box,
+			(
+				"Account $%s%s. New kit is bought at cost; kit handed back sells for half."
+				% [Department.money(d.balance), " (frozen: no new kit)" if d.frozen() else ""]
+			),
+			Ink.accent(0.9) if d.frozen() else GREY,
+			10
+		)
 	match tab:
 		0:
 			_briefing(s)
@@ -767,10 +1580,12 @@ func show_plan() -> void:
 	var hb := _h(box)
 	_btn(hb, "<  Board", func(): main.ops_board())
 	if bool(Settings.get_v("veteran")):
-		_lab(hb, "Veteran chief — the plan is yours.", GREY, 10)   # Q4: no Suggest at this difficulty
+		_lab(hb, "Veteran chief — the plan is yours.", GREY, 10)  # Q4: no Suggest at this difficulty
 	else:
 		_btn(hb, "Suggest a plan", func(): main.ops_suggest())
-	var run := _btn(box, "RUN   >   %d officer%s" % [n, "" if n == 1 else "s"], func(): main.ops_run())
+	var run := _btn(
+		box, "RUN   >   %d officer%s" % [n, "" if n == 1 else "s"], func(): main.ops_run()
+	)
 	run.custom_minimum_size = Vector2(0, 40)
 	run.add_theme_font_size_override("font_size", 16)
 	run.disabled = n == 0
@@ -785,18 +1600,70 @@ func _tab(i: int) -> void:
 func _briefing(s: Dictionary) -> void:
 	var spec: Dictionary = Situations.TYPES[s["type"]]
 	_text(box, spec["blurb"], INK, 12)
-	_text(box, "%s, %s ward. The ward's trust in police: %d of 100%s." % [s["address"], s["ward"], int(s["trust"]),
-		" (its community group has broken with the department: no tips from it)" if int(s["trust"]) < 25 else ""], GREY, 11)
-	_text(box, "Visibility %s: %s" % [dots(int(s["visibility"])), ["", "almost nobody is watching; mistakes can stay quiet for months",
-		"a few neighbours", "a street's worth of phones", "reporters likely; anything that happens is seen", "live cameras and a crowd: it will all be seen, at once"][clampi(int(s["visibility"]), 1, 5)]], GREY, 11)
-	_text(box, "Time pressure: %s" % Situations.PRESSURE_NAMES.get(s["pressure"], s["pressure"]), GREY, 11)
+	_text(
+		box,
+		(
+			"%s, %s ward. Trust in police: %d of 100%s."
+			% [
+				s["address"],
+				s["ward"],
+				int(s["trust"]),
+				(
+					" (the coalition has cut off community tips)"
+					if not bool(s.get("community", true))
+					else ""
+				)
+			]
+		),
+		GREY,
+		11
+	)
+	_text(
+		box,
+		(
+			"Visibility %s: %s"
+			% [
+				dots(int(s["visibility"])),
+				[
+					"",
+					"Few people are watching; a report may take months.",
+					"A small number of neighbours may see it.",
+					"Phones are out along the street.",
+					"Reporters may be there; more people will have an account.",
+					"A crowd and live cameras put the event in public view."
+				][clampi(int(s["visibility"]), 1, 5)]
+			]
+		),
+		GREY,
+		11
+	)
+	_text(
+		box,
+		"Time pressure: %s" % Situations.PRESSURE_NAMES.get(s["pressure"], s["pressure"]),
+		GREY,
+		11
+	)
 	if s["type"] == "event":
 		var ch: Dictionary = Situations.chatter(s)
-		_text(box, "Sizing the detail: the standing answer is ten officers; on lowered chatter six suffice — Suggest a plan sends %d on this reading (%s, %d%% confidence). Static post and patrol duty bills at half overtime, but fifteen minutes of it is still fifteen minutes: the catastrophic tail is the price of sending six to the wrong rally." % [
-			Autoplan.want_for(s), String(ch.get("level", "no word")), int(ch.get("conf", 30))], GREY, 11)
-	var bb := "[b]WHAT IS KNOWN[/b]\n"
+		_text(
+			box,
+			(
+				"The standing detail is ten officers; six may be enough on a lowered estimate. Suggest a plan assigns %d from the current reading (%s, %d%% confidence). Posts and patrols cost half overtime. The event lasts fifteen minutes; the estimate is not a guarantee."
+				% [
+					Autoplan.want_for(s),
+					String(ch.get("level", "no word")),
+					int(ch.get("conf", 30))
+				]
+			),
+			GREY,
+			11
+		)
+	var bb := "[b]FACTS, ESTIMATES, AND SOURCES[/b]\n"
 	for ln in Situations.briefing_lines(s):
-		bb += ("[b]%s:[/b] %s  [i](confirmed)[/i]\n" if ln["known"] else "%s: %s\n") % [ln["label"], String(ln["text"]).replace("[", "(")]
+		bb += (
+			("[b]%s:[/b] %s  [i](confirmed)[/i]\n" if ln["known"] else "%s: %s\n")
+			% [ln["label"], String(ln["text"]).replace("[", "(")]
+		)
 	if not s["tips"].is_empty():
 		bb += "\n[b]TIPS[/b]\n"
 		for tp in s["tips"]:
@@ -805,18 +1672,33 @@ func _briefing(s: Dictionary) -> void:
 		bb += "\nNo tips have come in."
 	_rich(box, bb)
 	# canvass
-	var av: Array = main.campaign.available_for(s["id"]).filter(func(r): return not main.campaign.plan_members(s).has(r["id"]))
+	var av: Array = main.campaign.available_for(s["id"]).filter(
+		func(r): return not main.campaign.plan_members(s).has(r["id"])
+	)
 	if not av.is_empty():
 		var h := _h(box)
 		var opt := OptionButton.new()
 		opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		for r in Autoplan.ranked(av):
-			opt.add_item("%s %s (%s)" % [String(r["rank"]).substr(0, 3) + ".", r["name"], Habits.EXP_NAMES[int(r["exp"])]])
+			opt.add_item(
+				(
+					"%s %s (%s)"
+					% [
+						String(r["rank"]).substr(0, 3) + ".",
+						r["name"],
+						Habits.EXP_NAMES[int(r["exp"])]
+					]
+				)
+			)
 			opt.set_item_metadata(opt.item_count - 1, r["id"])
 		h.add_child(opt)
-		_btn(h, "Canvass", func():
-			if opt.selected >= 0:
-				main.ops_canvass(String(opt.get_item_metadata(opt.selected))))
+		_btn(
+			h,
+			"Canvass",
+			func():
+				if opt.selected >= 0:
+					main.ops_canvass(String(opt.get_item_metadata(opt.selected)))
+		)
 		_text(box, "Canvassing brings two more tips; the officer is gone for the week.", GREY, 10)
 	if s["type"] in ["warrant", "gang"]:
 		var h2 := _h(box)
@@ -829,7 +1711,12 @@ func _briefing(s: Dictionary) -> void:
 		hour.item_selected.connect(func(i): main.ops_set_night(i == 1))
 		h2.add_child(hour)
 	var cams: bool = main.campaign.dept.bodycams
-	var cb := _btn(box, "Body cameras: %s" % ("worn" if cams else "not issued"), func(on): main.ops_set_bodycams(on), true)
+	var cb := _btn(
+		box,
+		"Body cameras: %s" % ("worn" if cams else "not issued"),
+		func(on): main.ops_set_bodycams(on),
+		true
+	)
 	cb.set_pressed_no_signal(cams)
 	cb.tooltip_text = "Body cameras record what each officer sees as evidence for the incident record. You always see what your officers see."
 
@@ -837,7 +1724,12 @@ func _briefing(s: Dictionary) -> void:
 func _force(s: Dictionary) -> void:
 	var plan: Dictionary = main.plan
 	var squads: Array = plan.get("squads", [])
-	_text(box, "Up to five squads of up to six (30 officers). Suggest a plan forms them: as many threes as it can, then evens them out. The highest rank leads; the leader's experience sets the squad's order points.", GREY, 11)
+	_text(
+		box,
+		"Build up to five squads of six. The highest rank leads; experience sets how many orders that squad can carry. You can change the suggested grouping and kit before the operation starts.",
+		GREY,
+		11
+	)
 	var stages: Array = Operation.stages(main.level)
 	for si in squads.size():
 		var sq: Dictionary = squads[si]
@@ -846,8 +1738,27 @@ func _force(s: Dictionary) -> void:
 		var v := _card(box)
 		var h := _h(v)
 		var t := Label.new()
-		t.text = "SQUAD %d  ·  %d  ·  %s" % [si + 1, recs.size(), ("led by %s %s (%s): %d point%s" % [ld["rank"], ld["name"],
-			Habits.EXP_NAMES[int(ld["exp"])], Orders.points_for(recs), "" if Orders.points_for(recs) == 1 else "s"]) if ld != null else "empty"]
+		t.text = (
+			"SQUAD %d  ·  %d  ·  %s"
+			% [
+				si + 1,
+				recs.size(),
+				(
+					(
+						"led by %s %s (%s): %d point%s"
+						% [
+							ld["rank"],
+							ld["name"],
+							Habits.EXP_NAMES[int(ld["exp"])],
+							Orders.points_for(recs),
+							"" if Orders.points_for(recs) == 1 else "s"
+						]
+					)
+					if ld != null
+					else "empty"
+				)
+			]
+		)
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(t)
@@ -859,7 +1770,11 @@ func _force(s: Dictionary) -> void:
 				so.add_item("stage " + String(st["name"]))
 			so.select(clampi(int(sq.get("stage", 0)), 0, stages.size() - 1))
 			var k := si
-			so.item_selected.connect(func(i): main.plan["squads"][k]["stage"] = i; main.plan_changed())
+			so.item_selected.connect(
+				func(i):
+					main.plan["squads"][k]["stage"] = i
+					main.plan_changed()
+			)
 			h2.add_child(so)
 			_btn(h2, "Remove squad", func(): _remove_squad(k))
 		# kit (v0.7.5): a ready-made squad kit, then each officer's own
@@ -870,14 +1785,34 @@ func _force(s: Dictionary) -> void:
 			for key in Equipment.SQUAD_KITS:
 				var kname: String = Equipment.SQUAD_KITS[key]["name"]
 				var kb := _btn(hk, kname, func(): _squad_kit(kk, key))
-				kb.tooltip_text = "%s kit. Point man: %s.\nThe rest: %s." % [kname, Equipment.describe(Equipment.SQUAD_KITS[key]["point"]),
-					Equipment.describe(Equipment.SQUAD_KITS[key]["rest"])]
+				kb.tooltip_text = (
+					"%s kit. Point man: %s.\nThe rest: %s."
+					% [
+						kname,
+						Equipment.describe(Equipment.SQUAD_KITS[key]["point"]),
+						Equipment.describe(Equipment.SQUAD_KITS[key]["rest"])
+					]
+				)
 			for r0 in recs:
 				var hr := _h(v)
 				var oid0: String = r0["id"]
-				var kl := _text(hr, "%s  ·  %s" % [r0["name"], Equipment.describe(r0.get("kit", Equipment.default_kit()))], INK, 11)
+				var kl := _text(
+					hr,
+					(
+						"%s  ·  %s"
+						% [r0["name"], Equipment.describe(r0.get("kit", Equipment.default_kit()))]
+					),
+					INK,
+					11
+				)
 				kl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				_btn(hr, "Kit" if kit_open != oid0 else "Done", func(): kit_open = "" if kit_open == oid0 else oid0; show_plan())
+				_btn(
+					hr,
+					"Kit" if kit_open != oid0 else "Done",
+					func():
+						kit_open = "" if kit_open == oid0 else oid0
+						show_plan()
+				)
 				if kit_open == oid0:
 					_kit_editor(v, r0)
 	if squads.size() < Orders.MAX_SQUADS:
@@ -900,8 +1835,26 @@ func _force(s: Dictionary) -> void:
 		var oid: String = r["id"]
 		opt.item_selected.connect(func(i): _assign(oid, i - 1))
 		h3.add_child(opt)
-		var l := _text(h3, "%s %s  ·  %d yr  ·  %s  ·  J %d%s" % [String(r["rank"]).substr(0, 3) + ".", r["name"], int(r.get("years", 0)),
-			Habits.EXP_NAMES[int(r["exp"])], int(r["judgment"]), ("  ·  " + String(r["personality"]).to_lower()) if r["personality"] != "" else ""], INK, 11)
+		var l := _text(
+			h3,
+			(
+				"%s %s  ·  %d yr  ·  %s  ·  J %d%s"
+				% [
+					String(r["rank"]).substr(0, 3) + ".",
+					r["name"],
+					int(r.get("years", 0)),
+					Habits.EXP_NAMES[int(r["exp"])],
+					int(r["judgment"]),
+					(
+						("  ·  " + String(r["personality"]).to_lower())
+						if r["personality"] != ""
+						else ""
+					)
+				]
+			),
+			INK,
+			11
+		)
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		l.tooltip_text = UI.officer_file(r)
 
@@ -912,9 +1865,13 @@ func _kit_editor(parent: Control, r: Dictionary) -> void:
 	var kit: Dictionary = Equipment.validate(r.get("kit", Equipment.default_kit()), who)
 	var v := VBoxContainer.new()
 	parent.add_child(v)
-	var rows := [["Primary", "primary", [""] + Equipment.PRIMARY_ORDER], ["Sidearm", "secondary", [""] + Equipment.SECONDARY_ORDER],
-		["Sight", "optic", ["red_dot", "irons", "magnified"]], ["Armour", "armour", ["none", "vest", "plates"]],
-		["Helmet", "head", ["none", "ballistic_helmet", "sof_helmet"]]]
+	var rows := [
+		["Primary", "primary", [""] + Equipment.PRIMARY_ORDER],
+		["Sidearm", "secondary", [""] + Equipment.SECONDARY_ORDER],
+		["Sight", "optic", ["red_dot", "irons", "magnified"]],
+		["Armour", "armour", ["none", "vest", "plates"]],
+		["Helmet", "head", ["none", "ballistic_helmet", "sof_helmet"]]
+	]
 	for row in rows:
 		var h := _h(v)
 		_lab(h, row[0], GREY, 11)
@@ -932,7 +1889,9 @@ func _kit_editor(parent: Control, r: Dictionary) -> void:
 				"optic":
 					nm = Equipment.OPTICS[item]["name"]
 				"armour":
-					nm = Equipment.ARMOUR[item]["name"] + (" (2 plates)" if item == "plates" else "")
+					nm = (
+						Equipment.ARMOUR[item]["name"] + (" (2 plates)" if item == "plates" else "")
+					)
 				"head":
 					nm = Equipment.HEAD[item]["name"]
 					ok = Equipment.allowed(Equipment.HEAD[item]["who"], who)
@@ -948,9 +1907,14 @@ func _kit_editor(parent: Control, r: Dictionary) -> void:
 	v.add_child(grid)
 	for gid in Equipment.GEAR_ORDER:
 		var spec: Dictionary = Equipment.GEAR[gid]
-		var ok2: bool = Equipment.allowed(spec["who"], who) and (not spec.has("needs") or kit["primary"] == spec["needs"])
+		var ok2: bool = (
+			Equipment.allowed(spec["who"], who)
+			and (not spec.has("needs") or kit["primary"] == spec["needs"])
+		)
 		var gl := _lab(grid, spec["name"], INK if ok2 else GREY, 11)
-		gl.tooltip_text = "%s (%s)\n%s" % [spec["name"], Equipment.WHO_NAMES[spec["who"]], spec["desc"]]
+		gl.tooltip_text = (
+			"%s (%s)\n%s" % [spec["name"], Equipment.WHO_NAMES[spec["who"]], spec["desc"]]
+		)
 		gl.mouse_filter = Control.MOUSE_FILTER_STOP
 		var sp := SpinBox.new()
 		sp.min_value = 0
@@ -960,8 +1924,24 @@ func _kit_editor(parent: Control, r: Dictionary) -> void:
 		var g2: String = gid
 		sp.value_changed.connect(func(val): _set_gear(r, g2, int(val)))
 		grid.add_child(sp)
-	_text(v, "%.1f kg (pace x%.2f), cost %d.%s" % [Equipment.weight(kit), Equipment.speed_factor(kit), Equipment.cost(kit),
-		"" if who == "tactical" else " Flashbangs, sting-balls, gas, the pepperball and 40 mm launchers, breaching rounds, the short rifle, the battle and marksman rifles and the shield need five years on the job or Experience 3."], GREY, 10)
+	_text(
+		v,
+		(
+			"%.1f kg (pace x%.2f), cost %d.%s"
+			% [
+				Equipment.weight(kit),
+				Equipment.speed_factor(kit),
+				Equipment.cost(kit),
+				(
+					""
+					if who == "tactical"
+					else " Flashbangs, sting-balls, gas, the pepperball and 40 mm launchers, breaching rounds, the short rifle, the battle and marksman rifles and the shield need five years on the job or Experience 3."
+				)
+			]
+		),
+		GREY,
+		10
+	)
 
 
 func _set_kit(r: Dictionary, field: String, value) -> void:
@@ -990,7 +1970,12 @@ func _squad_kit(si: int, key: String) -> void:
 	var recs := _recs(main.plan["squads"][si]["members"])
 	for k in recs.size():
 		var r: Dictionary = recs[k]
-		_issue(r, Equipment.validate(spec["point"] if k == 0 else spec["rest"], Equipment.who_of_record(r)))
+		_issue(
+			r,
+			Equipment.validate(
+				spec["point"] if k == 0 else spec["rest"], Equipment.who_of_record(r)
+			)
+		)
 	main.plan_changed()
 	main._save()
 	show_plan()
@@ -1018,7 +2003,13 @@ func _recs(ids: Array) -> Array:
 
 func _add_squad() -> void:
 	var stages: Array = Operation.stages(main.level)
-	main.plan["squads"].append({"members": [], "stage": main.plan["squads"].size() % maxi(1, stages.size()), "orders": Orders.empty_orders()})
+	main.plan["squads"].append(
+		{
+			"members": [],
+			"stage": main.plan["squads"].size() % maxi(1, stages.size()),
+			"orders": Orders.empty_orders()
+		}
+	)
 	main.plan_changed()
 	show_plan()
 
@@ -1050,9 +2041,13 @@ func _orders(s: Dictionary) -> void:
 		return
 	sel_sq = clampi(sel_sq, 0, squads.size() - 1)
 	var hs := _h(box)
+	var select_squad := func(on: bool, squad_i: int) -> void:
+		if on:
+			sel_sq = squad_i
+			set_pick({})
+			show_plan()
 	for si in squads.size():
-		var k := si
-		var b := _btn(hs, "Squad %d" % (si + 1), func(on): if on: sel_sq = k; set_pick({}); show_plan(), true)
+		var b := _btn(hs, "Squad %d" % (si + 1), select_squad.bind(si), true)
 		b.set_pressed_no_signal(si == sel_sq)
 	main.plan_marks.sel = sel_sq
 	main.plan_marks.queue_redraw()
@@ -1061,8 +2056,19 @@ func _orders(s: Dictionary) -> void:
 	var recs := _recs(sq["members"])
 	var pts := Orders.points_for(recs)
 	var used := Orders.cost(od)
-	_text(box, "Order points: %d of %d used%s" % [used, pts, ("  ·  leader " + Orders.leader(recs)["name"]) if not recs.is_empty() else ""],
-		INK if used <= pts else Ink.accent(0.9), 13)
+	_text(
+		box,
+		(
+			"Order points: %d of %d used%s"
+			% [
+				used,
+				pts,
+				("  ·  leader " + Orders.leader(recs)["name"]) if not recs.is_empty() else ""
+			]
+		),
+		INK if used <= pts else Ink.accent(0.9),
+		13
+	)
 	# objectives
 	for oi in 2:
 		var v := _card(box)
@@ -1135,27 +2141,84 @@ func _obj_tool(v: Control, ob: Dictionary, oi: int) -> void:
 	match ob["kind"]:
 		"clear", "rescue":
 			var n: int = ob.get("rooms", []).size()
-			_text(h, ("%d room%s picked" % [n, "" if n == 1 else "s"]) if n > 0 else ("the whole building" if ob["kind"] == "clear" else "wherever the hostages are"), GREY, 11)
+			_text(
+				h,
+				(
+					("%d room%s picked" % [n, "" if n == 1 else "s"])
+					if n > 0
+					else (
+						"the whole building"
+						if ob["kind"] == "clear"
+						else "wherever the hostages are"
+					)
+				),
+				GREY,
+				11
+			)
 			_tool_btn(h, "Pick rooms", {"kind": "rooms", "obj": oi})
-			_btn(h, "All", func(): ob["rooms"] = []; main.plan_changed(); show_plan())
+			_btn(
+				h,
+				"All",
+				func():
+					ob["rooms"] = []
+					main.plan_changed()
+					show_plan()
+			)
 		"arrest":
 			var nm: String = main.cur_sit.get("named", "")
 			_text(h, "Target: %s" % (nm if nm != "" else "the first suspect found"), GREY, 11)
 		"contain":
-			_text(h, "%d opening%s" % [ob.get("openings", []).size(), "" if ob.get("openings", []).size() == 1 else "s"], GREY, 11)
+			_text(
+				h,
+				(
+					"%d opening%s"
+					% [
+						ob.get("openings", []).size(),
+						"" if ob.get("openings", []).size() == 1 else "s"
+					]
+				),
+				GREY,
+				11
+			)
 			_tool_btn(h, "Pick doors and windows", {"kind": "openings", "obj": oi})
 		"post":
 			_text(h, "Click the plan to place; right-click to set facing.", GREY, 11)
 			_tool_btn(h, "Place", {"kind": "post", "obj": oi})
 		"patrol":
-			_text(h, "%d waypoint%s" % [ob.get("route", []).size(), "" if ob.get("route", []).size() == 1 else "s"], GREY, 11)
+			_text(
+				h,
+				(
+					"%d waypoint%s"
+					% [ob.get("route", []).size(), "" if ob.get("route", []).size() == 1 else "s"]
+				),
+				GREY,
+				11
+			)
 			_tool_btn(h, "Draw route", {"kind": "route", "obj": oi})
-			_btn(h, "Clear", func(): ob["route"] = []; main.plan_changed(); show_plan())
+			_btn(
+				h,
+				"Clear",
+				func():
+					ob["route"] = []
+					main.plan_changed()
+					show_plan()
+			)
 
 
 func _tool_btn(parent: Control, text: String, p: Dictionary) -> void:
-	var on: bool = not pick.is_empty() and pick.get("kind", "") == p["kind"] and int(pick.get("obj", -1)) == int(p.get("obj", -1))
-	var b := _btn(parent, text, func(state): set_pick(p if state else {}); show_plan(), true)
+	var on: bool = (
+		not pick.is_empty()
+		and pick.get("kind", "") == p["kind"]
+		and int(pick.get("obj", -1)) == int(p.get("obj", -1))
+	)
+	var b := _btn(
+		parent,
+		text,
+		func(state):
+			set_pick(p if state else {})
+			show_plan(),
+		true
+	)
 	b.set_pressed_no_signal(on)
 
 
@@ -1184,38 +2247,79 @@ func _constraint_row(v: Control, od: Dictionary, key: String, pts: int, used: in
 		return
 	match key:
 		"avoid":
-			_text(h, ", ".join(od["avoid"].map(func(r): return Situations.room_title(main.level, r))) if not od["avoid"].is_empty() else "pick rooms", GREY, 10)
+			_text(
+				h,
+				(
+					", ".join(od["avoid"].map(func(r): return Situations.room_title(main.level, r)))
+					if not od["avoid"].is_empty()
+					else "pick rooms"
+				),
+				GREY,
+				10
+			)
 			_tool_btn(h, "Pick", {"kind": "avoid"})
 		"consolidate":
-			_text(h, Situations.room_title(main.level, od["consolidate"]) if od["consolidate"] != "*" else "pick a room", GREY, 10)
+			_text(
+				h,
+				(
+					Situations.room_title(main.level, od["consolidate"])
+					if od["consolidate"] != "*"
+					else "pick a room"
+				),
+				GREY,
+				10
+			)
 			_tool_btn(h, "Pick", {"kind": "consolidate"})
 		"entry":
-			_text(h, String(od["entry"]).to_lower() if od["entry"] != "*" else "pick a door", GREY, 10)
+			_text(
+				h, String(od["entry"]).to_lower() if od["entry"] != "*" else "pick a door", GREY, 10
+			)
 			_tool_btn(h, "Pick", {"kind": "entry"})
 		"pace":
 			var po := OptionButton.new()
 			po.add_item("walk")
 			po.add_item("creep")
 			po.select(1 if od["pace"] == "creep" else 0)
-			po.item_selected.connect(func(i): od["pace"] = ["walk", "creep"][i]; main.plan_changed())
+			po.item_selected.connect(
+				func(i):
+					od["pace"] = ["walk", "creep"][i]
+					main.plan_changed()
+			)
 			h.add_child(po)
 		"phase":
 			var ph := OptionButton.new()
-			var items: Array = [["time", 30], ["time", 60], ["time", 90], ["time", 120], ["time", 180]]
+			var items: Array = [
+				["time", 30], ["time", 60], ["time", 90], ["time", 120], ["time", 180]
+			]
 			for si in main.plan["squads"].size():
 				if si != sel_sq:
 					items.append(["squad", si])
 			var cur := 0
 			for i in items.size():
 				var it: Array = items[i]
-				ph.add_item(("wait %d s" % it[1]) if it[0] == "time" else ("until squad %d is done / in position" % (int(it[1]) + 1)))
-				if od["phase"].get("kind", "") == it[0] and int(od["phase"].get("t" if it[0] == "time" else "squad", -1)) == int(it[1]):
+				ph.add_item(
+					(
+						("wait %d s" % it[1])
+						if it[0] == "time"
+						else ("until squad %d is done / in position" % (int(it[1]) + 1))
+					)
+				)
+				if (
+					od["phase"].get("kind", "") == it[0]
+					and int(od["phase"].get("t" if it[0] == "time" else "squad", -1)) == int(it[1])
+				):
 					cur = i
 			ph.select(cur)
-			ph.item_selected.connect(func(i):
-				var it2: Array = items[i]
-				od["phase"] = {"kind": it2[0], "t": it2[1]} if it2[0] == "time" else {"kind": "squad", "squad": it2[1]}
-				main.plan_changed())
+			ph.item_selected.connect(
+				func(i):
+					var it2: Array = items[i]
+					od["phase"] = (
+						{"kind": it2[0], "t": it2[1]}
+						if it2[0] == "time"
+						else {"kind": "squad", "squad": it2[1]}
+					)
+					main.plan_changed()
+			)
 			h.add_child(ph)
 
 
@@ -1375,8 +2479,12 @@ func show_run() -> void:
 	_run_refs["clock"] = clock
 	var hs := _h(box)
 	var group := ButtonGroup.new()
+	var select_speed := func(on: bool, speed: float) -> void:
+		if on:
+			main.set_speed(speed)
 	for sp in UI.SPEEDS:
-		var b := _btn(hs, ("%sx" % str(sp)).replace(".0x", "x"), func(on): if on: main.set_speed(sp), true)
+		var speed: float = sp
+		var b := _btn(hs, ("%sx" % str(sp)).replace(".0x", "x"), select_speed.bind(speed), true)
 		b.button_group = group
 		b.custom_minimum_size = Vector2(44, 0)
 		b.set_pressed_no_signal(is_equal_approx(sp, main.speed))
@@ -1410,7 +2518,12 @@ func show_run() -> void:
 	var ab := _btn(box, "ABORT  ·  cut losses", func(): _abort())
 	ab.custom_minimum_size = Vector2(0, 36)
 	_run_refs["abort"] = ab
-	_text(box, "Abort: every squad breaks contact and withdraws to its vehicles, still under fire until it gets there. A failure, but a failure with everyone alive always scores better than one with deaths.", GREY, 10)
+	_text(
+		box,
+		"Abort: every squad breaks contact and withdraws to its vehicles, still under fire until it gets there. A failure, but a failure with everyone alive always scores better than one with deaths.",
+		GREY,
+		10
+	)
 
 
 func _abort() -> void:
@@ -1446,7 +2559,10 @@ func refresh_run(w, fog) -> void:
 	if mode != "run" or w == null:
 		return
 	var shown_t: float = main.view_t if main.view_t >= 0.0 else w.t
-	_run_refs["clock"].text = ("REWIND  " if main.view_t >= 0.0 else "") + "%02d:%04.1f" % [int(shown_t / 60.0), fmod(shown_t, 60.0)]
+	_run_refs["clock"].text = (
+		("REWIND  " if main.view_t >= 0.0 else "")
+		+ "%02d:%04.1f" % [int(shown_t / 60.0), fmod(shown_t, 60.0)]
+	)
 	_run_refs["pause"].set_pressed_no_signal(main.paused)
 	var sl: HSlider = _run_refs["slider"]
 	_sliding = true
@@ -1462,8 +2578,10 @@ func refresh_run(w, fog) -> void:
 			if not o.stunned(w.t):
 				eyes += 1
 	if fog != null and fog.enabled:
-		_run_refs["know"].text = "Fog of war: what %d of %d officers can see. %d people in view, %d radio last-known positions." % [eyes, offs,
-			fog.visible_ids.size(), fog.lkps.size()]
+		_run_refs["know"].text = (
+			"Fog of war: what %d of %d officers can see. %d people in view, %d radio last-known positions."
+			% [eyes, offs, fog.visible_ids.size(), fog.lkps.size()]
+		)
 	else:
 		_run_refs["know"].text = "Fog lifted."
 	var bb := ""
@@ -1477,11 +2595,30 @@ func refresh_run(w, fog) -> void:
 					alive += 1
 			var ob: Dictionary = el.get("obj", {})
 			var what: String = Orders.OBJECTIVES.get(ob.get("kind", ""), {}).get("name", "")
-			var st: String = {"assault": "clearing", "hold": "holding", "hunt": "patrolling", "wait": "on the phase line",
-				"withdraw": "withdrawing", "support": "waiting on the next room", "lost": "lost"}.get(el["mode"], el["mode"])
+			var st: String = (
+				{
+					"assault": "clearing",
+					"hold": "holding",
+					"hunt": "patrolling",
+					"wait": "on the phase line",
+					"withdraw": "withdrawing",
+					"support": "waiting on the next room",
+					"lost": "lost"
+				}
+				. get(el["mode"], el["mode"])
+			)
 			if el.get("consolidating", false):
 				st = "consolidating"
-			bb += "[b]SQUAD %d[/b]  %d/%d  ·  %s%s\n" % [el["i"] + 1, alive, el["members"].size(), st, ("  ·  " + what) if what != "" else ""]
+			bb += (
+				"[b]SQUAD %d[/b]  %d/%d  ·  %s%s\n"
+				% [
+					el["i"] + 1,
+					alive,
+					el["members"].size(),
+					st,
+					("  ·  " + what) if what != "" else ""
+				]
+			)
 	_run_refs["squads"].text = Ink.bb(bb)
 	# the radio: what the officers say and what happens to them
 	var lg: RichTextLabel = _run_refs["log"]
@@ -1511,7 +2648,12 @@ func _radio(ln: Dictionary, w) -> bool:
 	var body: String = txt.substr(txt.find("  ") + 2) if txt.find("  ") >= 0 else txt
 	if float(ln["t"]) < 0.5 and ln["kind"] == "bad":
 		return false
-	if ln["kind"] == "end" or body.begins_with("Squad") or body.begins_with("ABORT") or body.begins_with("Police"):
+	if (
+		ln["kind"] == "end"
+		or body.begins_with("Squad")
+		or body.begins_with("ABORT")
+		or body.begins_with("Police")
+	):
 		return true
 	if body.begins_with("A") and body.length() > 1 and body[1].is_valid_int():
 		return ln["kind"] in ["comms", "kill", "info", "bad", "hit", "rule"]
@@ -1530,12 +2672,27 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 	_title("%s  ·  %d" % [res["label"], int(res["score"])], 20)
 	var goal: String = res["goal"]
 	_text(box, goal.substr(0, 1).to_upper() + goal.substr(1) + ".", INK, 13)
-	_text(box, "Score: success 100, partial 65, failure (an abort included) 30; every death costs 15 and every officer down 5. Force is not in the score: it is what the city remembers (City Hall).", GREY, 10)
+	_text(
+		box,
+		"Score: success 100, partial 65, failure (an abort included) 30; every death costs 15 and every officer down 5. Force is not in the score: it is what the city remembers (City Hall).",
+		GREY,
+		10
+	)
 	var bb := ""
 	for sq in res.get("squads", []):
-		bb += "[b]SQUAD %d[/b]  %d of %d standing\n" % [int(sq["i"]) + 1, int(sq["alive"]), int(sq["n"])]
+		bb += (
+			"[b]SQUAD %d[/b]  %d of %d standing\n"
+			% [int(sq["i"]) + 1, int(sq["alive"]), int(sq["n"])]
+		)
 		for r in sq["results"]:
-			bb += "    %s: %s (%s)\n" % [Orders.OBJECTIVES.get(r["kind"], {}).get("name", r["kind"]), "met" if r["ok"] else "failed", r["why"]]
+			bb += (
+				"    %s: %s (%s)\n"
+				% [
+					Orders.OBJECTIVES.get(r["kind"], {}).get("name", r["kind"]),
+					"met" if r["ok"] else "failed",
+					r["why"]
+				]
+			)
 		if sq["results"].is_empty():
 			bb += "    objective not resolved when the operation ended\n"
 	# Q4: what you changed from the suggestion, closed with what became of it
@@ -1586,21 +2743,52 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 				used.append("%s x%d" % [String(Equipment.GEAR[gid]["short"]).to_lower(), spent])
 		if o.kit.get("head", "") == "sof_helmet" and not o.helmet:
 			used.append("helmet took a round")
-		bb += "%s %s: %s; %d rounds, %d hit%s%s\n    [color=#737370]%s%s[/color]\n" % [o.id, o.name, st, p2["shots"], p2["hits"],
-			("; misses: " + ", ".join(misses)) if not misses.is_empty() else "",
-			("; [b]broke orders:[/b] " + ", ".join(broken.get(o.id, []))) if broken.has(o.id) else "",
-			Equipment.describe(o.kit), ("; used " + ", ".join(used)) if not used.is_empty() else ""]
+		bb += (
+			"%s %s: %s; %d rounds, %d hit%s%s\n    [color=#737370]%s%s[/color]\n"
+			% [
+				o.id,
+				o.name,
+				st,
+				p2["shots"],
+				p2["hits"],
+				("; misses: " + ", ".join(misses)) if not misses.is_empty() else "",
+				(
+					("; [b]broke orders:[/b] " + ", ".join(broken.get(o.id, [])))
+					if broken.has(o.id)
+					else ""
+				),
+				Equipment.describe(o.kit),
+				("; used " + ", ".join(used)) if not used.is_empty() else ""
+			]
+		)
 	var sm: Dictionary = w.incident.summary()
-	bb += "\n[b]CIVILIANS[/b]  %d present, %d hurt, %d killed; %d round%s from police struck a civilian.\n" % [sm["civ_total"], sm["civ_hit"],
-		sm["civ_killed"], sm["civ_hit_police"], "" if sm["civ_hit_police"] == 1 else "s"]
+	bb += (
+		"\n[b]CIVILIANS[/b]  %d present, %d hurt, %d killed; %d round%s from police struck a civilian.\n"
+		% [
+			sm["civ_total"],
+			sm["civ_hit"],
+			sm["civ_killed"],
+			sm["civ_hit_police"],
+			"" if sm["civ_hit_police"] == 1 else "s"
+		]
+	)
 	if sm.get("hostages", 0) > 0:
-		bb += "Hostages: %d, %d out safe, %d killed.\n" % [sm["hostages"], sm["hostages_safe"], sm["hostages_killed"]]
-	bb += "Suspects: %d, %d down, %d gave up, %d cuffed, %d got away.\n" % [sm["suspects"], sm["suspects_down"], sm["surrendered"], sm["arrested"], sm["escaped"]]
+		bb += (
+			"Hostages: %d, %d out safe, %d killed.\n"
+			% [sm["hostages"], sm["hostages_safe"], sm["hostages_killed"]]
+		)
+	bb += (
+		"Suspects: %d, %d down, %d gave up, %d cuffed, %d got away.\n"
+		% [sm["suspects"], sm["suspects_down"], sm["surrendered"], sm["arrested"], sm["escaped"]]
+	)
 	if not dept_lines.is_empty():
 		bb += "\n[b]THE DEPARTMENT[/b]\n"
 		for d in dept_lines:
 			bb += String(d).replace("[", "(") + "\n"
-	bb += "\n[b]FILES OPENED[/b]  %d. What comes of them lands later: in the papers, in court, at City Hall.\n" % int(sm["findings"])
+	bb += (
+		"\n[b]FILES OPENED[/b]  %d. What comes of them lands later: in the papers, in court, at City Hall.\n"
+		% int(sm["findings"])
+	)
 	_rich(box, bb)
 	_sep()
 	_text(box, "REPLAY  ·  the whole operation with the fog lifted", INK, 12)
@@ -1614,7 +2802,10 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 	sl.max_value = maxf(1.0, w.t)
 	sl.step = 0.0
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sl.value_changed.connect(func(v): if not _sliding: main.ops_replay_seek(v))
+	var seek_replay := func(value: float) -> void:
+		if not _sliding:
+			main.ops_replay_seek(value)
+	sl.value_changed.connect(seek_replay)
 	box.add_child(sl)
 	_run_refs["rslider"] = sl
 	var rc := Label.new()
@@ -1631,5 +2822,8 @@ func refresh_replay(t: float, total: float, playing: bool) -> void:
 	_sliding = true
 	_run_refs["rslider"].set_value_no_signal(t)
 	_sliding = false
-	_run_refs["rclock"].text = "%02d:%04.1f of %02d:%04.1f" % [int(t / 60.0), fmod(t, 60.0), int(total / 60.0), fmod(total, 60.0)]
+	_run_refs["rclock"].text = (
+		"%02d:%04.1f of %02d:%04.1f"
+		% [int(t / 60.0), fmod(t, 60.0), int(total / 60.0), fmod(total, 60.0)]
+	)
 	_run_refs["play"].set_pressed_no_signal(playing)
