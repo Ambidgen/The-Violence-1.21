@@ -246,6 +246,18 @@ func _pool_k(pl: Dictionary) -> float:
 	return sqrt(clampf((world.t - float(pl["t0"])) / 14.0, 0.06, 1.0))
 
 
+## Shared ordered samples for both rings of a pool. Keeping this pure makes the
+## triangulation regression independent of a renderer or a running World.
+func pool_points(c: Vector2, r: float, rot: float, sh: PackedFloat32Array, scale_f := 1.0) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if sh.size() < 3:
+		return out
+	for i in sh.size():
+		var a := rot + TAU * float(i) / float(sh.size())
+		out.append(c + Vector2.from_angle(a) * r * maxf(0.01, sh[i]) * scale_f)
+	return out
+
+
 ## The stains: under the walls, gone with gore off.
 class Stains extends Node2D:
 	var d
@@ -268,18 +280,15 @@ class Stains extends Node2D:
 				draw_line((sm[0] as Vector2).lerp(sm[1], 0.15) * PX, (sm[0] as Vector2).lerp(sm[1], 0.7) * PX, Ink.accent(0.75), 2.0)
 
 	## One hard-edged irregular pool: outer at 0.68, inner at 0.90 and 0.58 scale, a few
-	## dry rim flecks. A spilled printing plate first, blood second.
+	## dry rim flecks. Both rings use the same ordered angular samples. Independently
+	## rotating/permuting the inner ring produced self-intersecting triangulations.
 	func _pool(pl: Dictionary, k: float) -> void:
 		var c: Vector2 = pl["p"] * PX
 		var r: float = float(pl["full"]) * k * PX
 		var sh: PackedFloat32Array = pl["shape"]
 		var rot: float = pl["rot"]
-		var outer := PackedVector2Array()
-		var inner := PackedVector2Array()
-		for i in sh.size():
-			var a := rot + TAU * float(i) / float(sh.size())
-			outer.append(c + Vector2.from_angle(a) * r * sh[i])
-			inner.append(c + Vector2.from_angle(a + 0.2) * r * 0.58 * sh[(i + 3) % sh.size()])
+		var outer := d.pool_points(c, r, rot, sh, 1.0)
+		var inner := d.pool_points(c, r, rot, sh, 0.58)
 		draw_colored_polygon(outer, Ink.accent(0.68))
 		draw_colored_polygon(inner, Ink.accent(0.90))
 		for j in 3:

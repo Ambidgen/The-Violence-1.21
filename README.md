@@ -1,152 +1,103 @@
-# Crime-Thriller — The Noir Prose Bible
+# The Violence
 
-A working craft manual distilled from close study of the twenty most popular adult noir and crime-thriller
-book series in English and translation — their sentences, their syntax, their dialogue, and the psychology
-of the people they put on the page.
+**The Violence** is a Godot 4 police-command and close-quarters autobattler set in Port Carrick. You are the chief: choose which situations to answer, assign officers, write their orders, and watch the operation resolve hands-off. The campaign lasts forty weeks and ends with an election.
 
-This is not a reading list, an encyclopedia, or a set of plot templates. It is a **prose bible**: a
-reference you keep open beside the manuscript, with rules, dial settings, diagnostic tests, pastiche
-exercises, and a linter that measures your draft against the voice you are trying to write.
+This checkout contains the game source, maps, campaign systems, cutscenes, and headless test harnesses. It is not a design document or a prose story.
 
-> **Content note — 18+.**
-> The source canon is adult fiction. It contains graphic violence, sexual violence, addiction, child abuse,
-> and suicide. This bible discusses those elements as craft problems and includes an explicit ethics and
-> handling chapter (`docs/prose-bible/04-style-grammar.md#9-violence-and-sex-on-the-page`). Nothing here is
-> intended for younger readers or for YA projects; young-adult fiction is excluded from the research by
-> design.
+## Run the game
 
----
+1. Install **Godot 4.4 or newer** (the project is tested with 4.4.1).
+2. Import `project.godot` in the Godot editor.
+3. Run the main scene (`scenes/main.tscn`) or press **F6/F5** as appropriate for your editor setup.
 
-## Start here
+The project uses the compatibility renderer. The title screen offers three ways to play:
 
-| If you want to… | Read |
+- **New campaign / Continue:** the persistent forty-week department campaign. There is one ironman-style save slot, saved after operations and weeks.
+- **Test range:** a configurable sandbox for two teams, officers, habits, equipment, and the twelve tactical maps.
+- **Endless battle: Port Carrick:** a continuous city simulation with gangs, police precincts, reports, QRFs, captures, and ambulances.
+
+The shipped Ogg Theora opening and short interstitials are optional. Shorts can be skipped with **Space**, **Enter**, **Escape**, a mouse click, or the on-screen **Skip** button. Missing video files do not block campaign flow.
+
+## The campaign loop
+
+Each week the operations board deals warrants, crew-house raids, barricaded suspects, hostage takings, and public events. Officers committed to one situation or to canvassing cannot be sent to another that week. Unanswered situations are recorded and can have consequences.
+
+For a situation, work through:
+
+1. **Briefing:** read confirmed facts, estimates, confidence, tips, time pressure, and the readiness range. The range is a planning index built from public intelligence and assigned force; it is **not a win probability**. Canvassing buys two tips but commits an officer for the week.
+2. **Force:** form up to five squads of six, assign officers, and buy or return equipment within the budget and training restrictions. **Suggest a plan** is an editable starting point; Veteran chief mode removes it.
+3. **Orders:** choose objectives and constraints. Order points depend on squad leadership and experience. The plan is a starting intention, not a script that guarantees compliance.
+4. **Run:** watch the operation under fog of war. Officers judge, perceive, react, and fight using their training, habits, stress, and orders. You do not steer individual officers.
+5. **Debrief:** read the itemized score arithmetic, officer and civilian outcomes, findings, and department consequences. Click any timeline event to seek the replay to that moment.
+
+The first operation includes an optional four-step guide covering Briefing, Force, Orders, and Debrief. It can be skipped and is controlled by the first-weeks tips setting.
+
+After an operation, review **Internal affairs**. Cases are sorted by severity and evidence, with filters for grave cases, video, and cases approaching lapse. Every case still requires its own decision: clear, retrain, suspend, or dismiss. The weekly board includes a triage summary.
+
+## Controls and playback
+
+| Input | Action |
 | --- | --- |
-| Understand the project and its method | [`docs/prose-bible/00-preface.md`](docs/prose-bible/00-preface.md) |
-| See the twenty series and why they were chosen | [`docs/prose-bible/01-the-canon.md`](docs/prose-bible/01-the-canon.md) |
-| Fix a sentence, a paragraph, or a scene | [`docs/prose-bible/04-style-grammar.md`](docs/prose-bible/04-style-grammar.md) |
-| Pick and tune a voice | [`docs/prose-bible/05-voice-recipes.md`](docs/prose-bible/05-voice-recipes.md) |
-| Build plot and structure | [`docs/prose-bible/06-structure-and-plot.md`](docs/prose-bible/06-structure-and-plot.md) |
-| Handle character psychology with accuracy | [`docs/prose-bible/03-character-psychology.md`](docs/prose-bible/03-character-psychology.md) |
-| Understand how the canon actually writes | [`docs/prose-bible/02-prose-and-syntax.md`](docs/prose-bible/02-prose-and-syntax.md) |
-| Study one series in depth | [`docs/prose-bible/series/`](docs/prose-bible/series/) (20 cards) |
-| See one scene written five ways | [`docs/prose-bible/09-variants.md`](docs/prose-bible/09-variants.md) |
-| Revise a draft or run drills | [`docs/prose-bible/07-revision-and-drills.md`](docs/prose-bible/07-revision-and-drills.md) |
-| Check a source or a term | [`docs/prose-bible/08-sources-and-glossary.md`](docs/prose-bible/08-sources-and-glossary.md) |
-| Measure a manuscript | [`tools/style_lint.py`](tools/style_lint.py) |
+| Mouse wheel | Zoom |
+| Middle- or right-drag | Pan |
+| Home | Refit the view |
+| Space | Pause/resume an operation; skip a short when one is playing |
+| 1–7 | Select operation speed in the test range/run controls |
+| F2 | Toggle red ink / monochrome presentation |
+| F3 | Toggle gore; evidence markers remain |
+| Escape | Open the menu or go back one front-end screen |
 
----
+The operation speed buttons provide the available playback rates. The rewind slider is a viewing tool: it never rolls back the simulation. Replay is available from the debrief.
 
-## The twenty
+**Contact-aware fast-forward** is an optional Settings toggle. At speeds above 1×, contact, casualties, and important radio events temporarily return playback to 1× for a short readable interval, then resume the selected speed after quiet. This changes presentation timing only, not simulation decisions or deterministic results.
 
-Ranked by a composite of commercial reach, durability, and demonstrated influence on later crime prose.
-Sales figures are estimates; ranking rationale and exclusions are argued in
-[`01-the-canon.md`](docs/prose-bible/01-the-canon.md).
+Other settings include fullscreen, volume buses, red ink, gore, first-weeks tips, opening/rare campaign shorts, and Veteran chief mode. Presentation settings do not alter the simulation.
 
-| # | Series | Author | Years | Books | Engine |
-| --- | --- | --- | --- | --- | --- |
-| 1 | The Continental Op | Dashiell Hammett | 1923–1930 | 2 novels + stories | Behaviourist hardboiled |
-| 2 | Philip Marlowe | Raymond Chandler | 1939–1958 | 7 | Lyrical hardboiled |
-| 3 | Maigret | Georges Simenon | 1931–1972 | 75 + stories | Atmospheric procedural |
-| 4 | Lew Archer | Ross Macdonald | 1949–1976 | 18 | Psychological PI |
-| 5 | 87th Precinct | Ed McBain | 1956–2005 | 55 | Ensemble procedural |
-| 6 | Martin Beck | Sjöwall & Wahlöö | 1965–1975 | 10 | Social procedural |
-| 7 | Harlem Cycle | Chester Himes | 1957–1969 | 9 | Grotesque/absurdist noir |
-| 8 | L.A. Quartet | James Ellroy | 1987–1992 | 4 + 3 | Telegraphic historical noir |
-| 9 | Detroit/Miami corpus | Elmore Leonard | 1969–2013 | 45 | Dialogic comic noir |
-| 10 | Dave Robicheaux | James Lee Burke | 1987–2024 | 24 | Southern lyrical noir |
-| 11 | V.I. Warshawski | Sara Paretsky | 1982– | 22 | Feminist PI |
-| 12 | Kinsey Millhone | Sue Grafton | 1982–2017 | 25 | 1980s PI |
-| 13 | Kay Scarpetta | Patricia Cornwell | 1990– | 29 | Forensic procedural |
-| 14 | Hannibal Lecter | Thomas Harris | 1981–2006 | 4 | Psychological thriller |
-| 15 | Harry Bosch | Michael Connelly | 1992– | 26 (+ spin-offs) | Police procedural |
-| 16 | John Rebus | Ian Rankin | 1987– | 25+ | Tartan noir |
-| 17 | Kurt Wallander | Henning Mankell | 1991–2009 | 10 + stories | Nordic procedural |
-| 18 | Millennium | Stieg Larsson | 2005–2007 | 3 | Investigative thriller |
-| 19 | Jack Reacher | Lee Child | 1997–2026 | 31 | Action thriller |
-| 20 | Harry Hole | Jo Nesbø | 1997–2026 | 13 (+1 in 2026) | Nordic noir thriller |
+## The city and the campaign link
 
----
+The endless city's six precincts correspond to the campaign's six wards. Its pressure file can influence later campaign boards: gang-held ground, reports and incidents, deaths, and police captures are read as broad weights rather than as a scripted outcome.
 
-## What makes this a bible rather than an essay collection
+Reports cluster at precinct scale: within **140 metres**, **90 seconds**, and the same precinct. A QRF searches the nearby buildings. Hospital ambulances respond after all-clear; a guarded early response can collect living non-police casualties when a QRF is assigned and the incident's local report area has been quiet for twelve seconds. Police paramedics continue to prioritize downed officers.
 
-1. **Every series gets the same card.** A fixed set of headings, in the same order, so voices are comparable:
-   corpus, popularity evidence, syntax mechanics, character psychology, signature devices, what to steal,
-   what to avoid, a diagnostic exercise and an original annotated pastiche.
-2. **Claims are tied to evidence.** Craft conclusions are anchored in interviews, reviews, measured
-   sentence-length studies, and the texts themselves. Sources are listed in
-   [`08-sources-and-glossary.md`](docs/prose-bible/08-sources-and-glossary.md).
-3. **It is operational.** `data/series.json` holds a 12-axis voice card for each series;
-   [`05-voice-recipes.md`](docs/prose-bible/05-voice-recipes.md) turns those cards into writing parameters;
-   `tools/style_lint.py` measures a draft against them.
-4. **It is honest about its limits.** The dial values are editorial estimates, not corpus statistics.
-   Where a number is a publisher estimate or a critic's measurement, it is labelled as such.
+City navigation caches static gate-to-gate street routes. The headless city soak reports AI, pathfinding, dormancy, and route-cache timings so optimization can be checked without changing seeded decisions.
 
----
+## Saves and version
 
-## Tooling
+Campaign and settings data live under Godot's `user://` directory. The campaign save is versioned and older compatible saves are accepted. Do not run multiple game instances against the same save slot.
 
-```bash
-# Measure a chapter against the Chandler voice card
-python3 tools/style_lint.py chapter-01.md --voice chandler
+The canonical runtime version is `scripts/version.gd` (`Version.VALUE`). After changing it, synchronize Godot's metadata with:
 
-# Compare two voices side by side
-python3 tools/style_lint.py chapter-01.md --voice ellroy --compare leonard
-
-# Machine-readable output for CI or editor integration
-python3 tools/style_lint.py chapter-01.md --voice connelly --json
-
-# Run the linter's own tests
-python3 tools/test_style_lint.py
-
-# Take it for a spin on the sample scenes
-python3 tools/style_lint.py tools/samples/chandler-scene.md --voice chandler
-python3 tools/style_lint.py tools/samples/leonard-scene.md --voice leonard
+```sh
+python3 tools/sync_version.py
 ```
 
-The linter reports sentence-length distribution, dialogue ratio, filter-word and intensifier density,
-said-bookisms, adverb-bearing dialogue tags, cliché hits, semicolon/em-dash/exclamation rates, paragraph
-length, and a Flesch reading-ease score, then prints the delta against the chosen voice card. Full metric definitions and limits are in
-[`tools/README.md`](tools/README.md).
+Commit `scripts/version.gd`, `project.godot`, and `export_presets.cfg` together. The improvement regression suite checks that these values agree.
 
-It is a **diagnostic, not a judge**. A voice card is a target, and every target in this book is broken
-deliberately somewhere in the canon.
+## Headless checks
 
----
+Run from the repository root with a Godot executable on your PATH (or substitute its absolute path):
 
-## Repository map
-
-```
-README.md
-data/
-  series.json                 # 20 voice cards, machine-readable
-docs/
-  prose-bible/
-    00-preface.md             # scope, method, how to use, ethics
-    01-the-canon.md           # selection, ranking, exclusions, timeline
-    02-prose-and-syntax.md    # cross-series analysis of sentences and sound
-    03-character-psychology.md# trauma, moral injury, psychopathy, addiction
-    04-style-grammar.md       # the operative rules (the bible proper)
-    05-voice-recipes.md       # 12 dial settings + 8 combinable modules
-    06-structure-and-plot.md  # architectures, scenes, exposition, endings
-    07-revision-and-drills.md # checklists and 30 exercises
-    08-sources-and-glossary.md# annotated sources and terminology
-    09-variants.md            # one scene, five registers, measured
-    series/
-      README.md               # index and reading instructions
-      01-hammett.md … 20-nesbo.md
-tools/
-  style_lint.py               # manuscript diagnostics against the voice cards
-  test_style_lint.py          # 22 unit tests, stdlib only
-  samples/
-    chandler-scene.md         # narration-forward pastiche
-    leonard-scene.md          # dialogue-forward pastiche
-  README.md                   # usage, metric definitions, limits
+```sh
+godot --headless --path . -s res://tests/_check.gd
+godot --headless --path . -s res://tests/improvements_test.gd
+godot --headless --path . -s res://tests/city_improvements_test.gd
+godot --headless --path . -s res://tests/ops_ui_test.gd
+godot --headless --path . -s res://tests/dept_test.gd
+godot --headless --path . -s res://tests/orders_test.gd
+godot --headless --path . -s res://tests/determinism_test.gd -- --verbose
+godot --headless --path . -s res://tests/city_sim.gd -- --seed=1001 --min=6 --quiet --fine
 ```
 
----
+Some harnesses accept additional options documented in their script headers. Headless execution validates logic and scene automation; it is not a substitute for visual or manual playtesting.
 
-## A note on originality
+## Source map
 
-The pastiche passages in this repository are **original prose written for this project**. They demonstrate
-syntactic patterns; they do not reproduce the source novels. Direct quotations from the canon are short,
-attributed, and used for criticism. No copyrighted text is included at length.
+- `scripts/main.gd`: application flow, operation playback, replay, and cutscene integration.
+- `scripts/ui/ops_ui.gd`: board, planner, debrief, IA, and first-operation guide.
+- `scripts/campaign/`: situations, planning, public-intel readiness, outcomes, department, politics, and saves.
+- `scripts/sim/`: deterministic world, operators, navigation, combat, recorder, and pacing classifiers.
+- `scripts/city/`: city generation, navigation, director, roads, and emergency response.
+- `scripts/view/`: plan, actors, overlays, decals, replay, and presentation settings.
+- `tests/`: engine-backed unit, regression, determinism, balance, and soak harnesses.
+
+See `CHANGELOG.md` for historical release notes and the in-game **How to play** pages for the full mechanics reference.

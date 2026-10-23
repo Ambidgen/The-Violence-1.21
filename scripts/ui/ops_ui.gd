@@ -16,6 +16,7 @@ const Courses = preload("res://scripts/data/courses.gd")
 const Department = preload("res://scripts/campaign/department.gd")
 const Politics = preload("res://scripts/campaign/politics.gd")
 const Settings = preload("res://scripts/ui/settings.gd")
+const Risk = preload("res://scripts/campaign/risk.gd")
 const PANEL_W := 460.0
 const INK := Color("#121212")
 const GREY := Color("#737370")
@@ -36,6 +37,9 @@ var _sliding := false        # the panel itself is moving a slider: not the play
 var kit_open := ""           # Force screen: the officer whose kit is being edited (v0.7.5)
 var roster_open := ""        # Roster: the officer whose file is open (v0.8.5)
 var flash := ""              # a one-line answer to the last thing tried (v0.8.5)
+var case_filter := "all"      # IA triage: all, grave, video, due
+var guide_active := false     # first-operation guide, until the debrief returns to the board
+var guide_dismissed := false
 
 
 func build(m) -> void:
@@ -153,11 +157,15 @@ static func dots(n: int) -> String:
 
 # ================================================================== the board
 func show_board(lines := []) -> void:
+	if mode == "debrief":
+		guide_active = false
 	mode = "board"
 	root.visible = true
 	_clear()
 	var c = main.campaign
 	var d = c.dept
+	if c.week() == 1 and int(d.ops_run) == 0 and bool(Settings.get_v("tips")) and not guide_dismissed:
+		guide_active = true
 	if c.over():
 		_election_night(lines)
 		return
@@ -217,7 +225,10 @@ func show_board(lines := []) -> void:
 
 func _end_week() -> void:
 	var lines: Array = main.ops_end_week()
-	show_board(lines)
+	if main.campaign.over():
+		main.play_consequence_short("s11_election", {}, func(): show_board(lines), true)
+	else:
+		show_board(lines)
 
 
 ## A note from the outgoing chief (1.0): the first two weeks, unless tips are off.
@@ -379,6 +390,8 @@ func _dept_strip(parent: Control) -> void:
 	_text(v, "Morale %d%s   ·   %d internal affairs case%s open" % [d.morale,
 		" (low: more stress in every operation)" if d.morale < Courses.MORALE0 else "",
 		nc, "" if nc == 1 else "s"], GREY, 11)
+	if nc > 0:
+		_text(v, Department.triage_line(d.cases, d.week), Ink.accent(0.85) if int(Department.case_triage(d.cases, d.week)["urgent"]) > 0 else GREY, 10)
 
 
 const STATUS_WORDS := {"injured": "out injured until week %d", "training": "on a course until week %d",
@@ -679,14 +692,40 @@ func _cases() -> void:
 		_text(box, flash, INK, 11)
 		flash = ""
 	_text(box, "Every finding the incident record ties to an officer, and every broken order, opens a case. Clear it, send the officer to a use-of-force review, suspend them for two weeks without pay, or dismiss them. A case nobody decides lapses after three weeks. The city watches: the union your discipline, the coalition and the DA what you clear.", GREY, 10)
-	var open: Array = d.open_cases()
+	var triage := Department.case_triage(d.cases, d.week)
+	_text(box, "WEEKLY TRIAGE  ·  %d open  ·  %d grave  ·  %d video  ·  %d due before lapse  ·  %d untested" % [triage["open"], triage["grave"], triage["video"], triage["urgent"], triage["untested"]], INK, 11)
+	var filters := _h(box)
+	for f in [["all", "All"], ["grave", "Grave"], ["video", "Video"], ["due", "Due soon"]]:
+		var key: String = f[0]
+		var label: String = f[1]
+		var fb := _btn(filters, ("[%s]" if case_filter == key else "%s") % label, func(): case_filter = key; _cases())
+		fb.tooltip_text = "Sort by severity, then evidence. Filters never decide a case."
+		fb.custom_minimum_size = Vector2(70, 0)
+	var open: Array = Department.sorted_open_cases(d.cases, d.week)
+	var total_open := open.size()
+	match case_filter:
+		"grave": open = open.filter(func(c): return Department.CASE_ORDER.find(c.get("kind", "")) >= 0 and Department.CASE_ORDER.find(c.get("kind", "")) <= 1)
+		"video": open = open.filter(func(c): return c.get("strength", "") == "video")
+		"due": open = open.filter(func(c): return Department.case_is_urgent(c, d.week))
 	if open.is_empty():
-		_text(box, "No open cases.", INK, 12)
+		_text(box, "No open cases." if total_open == 0 else "No cases match this filter.", INK, 12)
+	elif case_filter != "all":
+		_text(box, "Showing %d of %d open cases; each still requires its own decision." % [open.size(), total_open], GREY, 10)
 	for c in open:
 		var r: Dictionary = d.get_officer(c["officer"])
 		var v := _card(box)
 		_text(v, "%s  ·  %s %s  ·  week %d" % [c["id"], r.get("rank", ""), r.get("name", "?"), int(c["week"])], INK, 13)
 		_text(v, "%s: %s (%s). Evidence: %s." % [Department.CASE_KINDS.get(c["kind"], c["kind"]), c["text"], c["place"], c["strength"]], INK, 11)
+		var severity := Department.CASE_ORDER.find(c.get("kind", ""))
+		var badges: Array = []
+		if severity >= 0 and severity <= 1:
+			badges.append("GRAVE")
+		if Department.case_is_urgent(c, d.week):
+			badges.append("DUE BEFORE LAPSE")
+		if c.get("strength", "") == "video":
+			badges.append("VIDEO")
+		if not badges.is_empty():
+			_text(v, "TRIAGE  ·  " + "  ·  ".join(badges), Ink.accent(0.9), 10)
 		_text(v, "Judgment %d  ·  integrity %d  ·  %d earlier case%s" % [int(r.get("judgment", 0)), int(r.get("integrity", 0)),
 			d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size(),
 			"" if d.cases.filter(func(x): return x["officer"] == c["officer"] and x["status"] == "closed").size() == 1 else "s"], GREY, 10)
@@ -731,12 +770,59 @@ func _decide(cid: String, decision: String) -> void:
 
 
 # ================================================================== briefing, force, orders
+func _guide() -> void:
+	if not guide_active or guide_dismissed or not bool(Settings.get_v("tips")):
+		return
+	var v := _card(box)
+	var step := tab + 1
+	var headings := ["BRIEFING", "FORCE", "ORDERS"]
+	_text(v, "FIRST OPERATION  ·  %d/4  ·  %s" % [step, headings[clampi(tab, 0, 2)]], Ink.accent(0.9), 12)
+	var copy := [
+		"Read what is known and what is only estimated. The readiness range is a planning index, not a win chance. When you have the briefing, continue to Force.",
+		"Assign officers to squads and check their kit. Suggest a plan is a starting point, not an order. Continue to Orders when the force is ready.",
+		"Give each squad an objective and any constraints its leader can afford. Check the readiness range again, then choose RUN below. The operation itself cannot be rewound.",
+	]
+	_text(v, copy[clampi(tab, 0, 2)], INK, 11)
+	var h := _h(v)
+	if tab < 2:
+		_btn(h, "Next: %s  >" % headings[tab + 1].capitalize(), func(): _tab(tab + 1))
+	_btn(h, "Skip guide", func(): guide_dismissed = true; guide_active = false; show_plan())
+
+
+func _guide_debrief() -> void:
+	if not guide_active or guide_dismissed or not bool(Settings.get_v("tips")):
+		return
+	var v := _card(box)
+	_text(v, "FIRST OPERATION  ·  4/4  ·  DEBRIEF", Ink.accent(0.9), 12)
+	_text(v, "Read the score arithmetic, then click a timeline event to seek the replay. The department consequences and any IA cases are below. Back to the board finishes the guide.", INK, 11)
+
+
+func _risk_for(s: Dictionary) -> Dictionary:
+	return Risk.assess(s, main.plan, _recs(main.campaign.plan_members(s)))
+
+
+func _risk_card(s: Dictionary, full := true) -> void:
+	var risk := _risk_for(s)
+	var v := _card(box)
+	_text(v, risk["label"], INK, 12)
+	_text(v, risk["note"], GREY, 10)
+	_text(v, "ASSUMPTIONS  ·  " + "  ·  ".join(risk["assumptions"]), GREY, 10)
+	if full:
+		if not risk["known"].is_empty():
+			_text(v, "KNOWN  ·  " + "  ·  ".join(risk["known"]), INK, 10)
+		if not risk["unknown"].is_empty():
+			_text(v, "STILL UNCERTAIN  ·  " + ", ".join(risk["unknown"]), Ink.accent(0.85), 10)
+
+
 func show_plan() -> void:
 	mode = "plan"
 	root.visible = true
 	_clear()
 	var s: Dictionary = main.cur_sit
 	_title(s["title"], 15)
+	if main.campaign.week() == 1 and int(main.campaign.dept.ops_run) == 0 and bool(Settings.get_v("tips")) and not guide_dismissed:
+		guide_active = true
+	_guide()
 	var tabs := _h(box)
 	for i in 3:
 		var b := _btn(tabs, ["1 Briefing", "2 Force", "3 Orders"][i], func(on): if on: _tab(i), true)
@@ -754,6 +840,8 @@ func show_plan() -> void:
 		var d = main.campaign.dept
 		_text(box, "Account $%s%s. New kit is bought at cost; kit handed back sells for half." % [Department.money(d.balance),
 			" (frozen: no new kit)" if d.frozen() else ""], Ink.accent(0.9) if d.frozen() else GREY, 10)
+	if tab > 0:
+		_risk_card(s, false)
 	match tab:
 		0:
 			_briefing(s)
@@ -803,6 +891,7 @@ func _briefing(s: Dictionary) -> void:
 	else:
 		bb += "\nNo tips have come in."
 	_rich(box, bb)
+	_risk_card(s, true)
 	# canvass
 	var av: Array = main.campaign.available_for(s["id"]).filter(func(r): return not main.campaign.plan_members(s).has(r["id"]))
 	if not av.is_empty():
@@ -1379,6 +1468,8 @@ func show_run() -> void:
 		b.button_group = group
 		b.custom_minimum_size = Vector2(44, 0)
 		b.set_pressed_no_signal(is_equal_approx(sp, main.speed))
+	var pacing := _text(box, "", GREY, 10)
+	_run_refs["pacing"] = pacing
 	_text(box, "REWIND (a way of looking: the operation itself never goes back)", GREY, 10)
 	var hr := _h(box)
 	var sl := HSlider.new()
@@ -1446,6 +1537,7 @@ func refresh_run(w, fog) -> void:
 		return
 	var shown_t: float = main.view_t if main.view_t >= 0.0 else w.t
 	_run_refs["clock"].text = ("REWIND  " if main.view_t >= 0.0 else "") + "%02d:%04.1f" % [int(shown_t / 60.0), fmod(shown_t, 60.0)]
+	_run_refs["pacing"].text = main.adaptive_status()
 	_run_refs["pause"].set_pressed_no_signal(main.paused)
 	var sl: HSlider = _run_refs["slider"]
 	_sliding = true
@@ -1526,10 +1618,16 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 	_clear()
 	var s: Dictionary = main.cur_sit
 	_title("DEBRIEF  ·  %s" % s["title"], 14)
+	_guide_debrief()
 	_title("%s  ·  %d" % [res["label"], int(res["score"])], 20)
 	var goal: String = res["goal"]
 	_text(box, goal.substr(0, 1).to_upper() + goal.substr(1) + ".", INK, 13)
-	_text(box, "Score: success 100, partial 65, failure (an abort included) 30; every death costs 15 and every officer down 5. Force is not in the score: it is what the city remembers (City Hall).", GREY, 10)
+	_text(box, "SCORE ARITHMETIC  ·  " + String(res.get("score_explanation", "")), INK, 11)
+	for part in res.get("score_parts", []):
+		var amount := int(part.get("amount", 0))
+		var line := "%s  ·  %s%d" % [part.get("label", ""), "+" if amount >= 0 else "", amount]
+		_text(box, line, INK if bool(part.get("total", false)) else GREY, 12 if bool(part.get("total", false)) else 10)
+	_text(box, "Deaths include officers and civilians; only nonfatal officer downs use the -5 term. Force is not in this score: it is what the city remembers (City Hall).", GREY, 10)
 	var bb := ""
 	for sq in res.get("squads", []):
 		bb += "[b]SQUAD %d[/b]  %d of %d standing\n" % [int(sq["i"]) + 1, int(sq["alive"]), int(sq["n"])]
@@ -1543,9 +1641,6 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 		bb += "\n[b]YOUR EDITS[/b]\n"
 		for ln in diff:
 			bb += "    %s\n" % String(ln)
-	bb += "\n[b]TIMELINE[/b]\n"
-	for tl in w.timeline:
-		bb += "%s  %s\n" % [w.clock(tl["t"]), String(tl["text"]).replace("[", "(")]
 	# officers
 	bb += "\n[b]OFFICERS[/b]\n"
 	var per: Dictionary = {}
@@ -1601,6 +1696,7 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 			bb += String(d).replace("[", "(") + "\n"
 	bb += "\n[b]FILES OPENED[/b]  %d. What comes of them lands later: in the papers, in court, at City Hall.\n" % int(sm["findings"])
 	_rich(box, bb)
+	_timeline(w)
 	_sep()
 	_text(box, "REPLAY  ·  the whole operation with the fog lifted", INK, 12)
 	var hr := _h(box)
@@ -1622,6 +1718,23 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 	_run_refs["rclock"] = rc
 	var back := _btn(box, "<  Back to the board", func(): main.ops_board())
 	back.custom_minimum_size = Vector2(0, 34)
+
+
+func _timeline(w) -> void:
+	_text(box, "TIMELINE  ·  click an event to seek the replay", INK, 12)
+	if w.timeline.is_empty():
+		_text(box, "No milestone events were recorded.", GREY, 10)
+		return
+	for tl in w.timeline:
+		var tt := float(tl.get("t", 0.0))
+		var kind := String(tl.get("kind", "info")).to_upper()
+		var text := "%s  [%s]  %s" % [w.clock(tt), kind, String(tl.get("text", "")).replace("[", "(")]
+		var b := _btn(box, text, func(): main.ops_replay_seek(tt))
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.clip_text = true
+		b.custom_minimum_size = Vector2(0, 28)
+		b.add_theme_font_size_override("font_size", 10)
+		b.tooltip_text = "Seek replay to %.1f seconds" % tt
 
 
 func refresh_replay(t: float, total: float, playing: bool) -> void:

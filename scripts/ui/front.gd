@@ -8,8 +8,9 @@ const UI = preload("res://scripts/ui/ui.gd")
 const Ink = preload("res://scripts/view/ink.gd")
 const Settings = preload("res://scripts/ui/settings.gd")
 const Campaign = preload("res://scripts/campaign/campaign.gd")
+const Version = preload("res://scripts/version.gd")
 
-const VERSION := "1.2.0"
+const VERSION := Version.VALUE
 
 var main
 var shade: ColorRect
@@ -259,7 +260,8 @@ func show_settings(from: String) -> void:
 	_check(v, "Red ink (F2): off is the monochrome proof", "red_ink")
 	_check(v, "Gore (F3): off keeps the evidence markers", "gore")
 	_check(v, "Tips in the first weeks of a campaign", "tips")
-	_check(v, "The opening cutscenes before a new campaign", "intro")
+	_check(v, "The opening cutscenes and rare campaign shorts", "intro")
+	_check(v, "Contact-aware fast-forward: slow for contact, injuries and radio", "adaptive_speed")
 	_check(v, "Veteran chief: no Suggest a plan (every plan is yours alone)", "veteran")
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
@@ -352,7 +354,7 @@ Officers sent to one situation, or out canvassing for tips, cannot go to another
 When you are done, End week. Pay goes out, the city's allocation comes in, wounds heal, courses finish, and a new board fills. The front page of the Carrick Ledger tells you what the city made of last week."""],
 	["Planning an operation", """Brief and plan opens three tabs.
 
-Briefing: what is known, what is estimated and how sure, and the tips. It is never complete. Canvassing sends an officer for two more tips and costs you that officer for the week.
+Briefing: what is known, what is estimated and how sure, and the tips. It is never complete. The readiness range compares the assigned force with that public intelligence; it is not a win probability. Canvassing sends an officer for two more tips and costs you that officer for the week.
 
 Force: who goes, in up to five squads of up to six, and what each carries. Kit is bought from the budget. Tactical gear (bangs, gas, the shield) needs tactical training.
 
@@ -365,10 +367,10 @@ At a rally the briefing prices the chatter: how likely an attack is, and how sur
 
 You see what your officers see: their view cones, live. Everyone else appears where the radio last called them out.
 
-Space pauses. 1-7 set the speed. The slider rewinds what you have seen; the operation itself never goes back. Abort withdraws every squad: a failure, but a failure with everyone alive always scores better than one with deaths."""],
-	["Afterwards", """The debrief scores the result and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody.
+Space pauses. 1-7 set the speed. Optional contact-aware fast-forward briefly returns to 1x for contact, casualties and important radio, then resumes after quiet; it never changes the simulation. The slider rewinds what you have seen; the operation itself never goes back. Abort withdraws every squad: a failure, but a failure with everyone alive always scores better than one with deaths."""],
+	["Afterwards", """The debrief shows the score arithmetic and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody. Click a timeline event to seek the replay to that moment.
 
-Findings that name an officer open an internal affairs case. The officer gives a statement — and what they say may or may not match the bodycam. Integrity is the stat that decides, and being caught disagreeing with the tape costs more of it. The highest-integrity squadmate still standing gives testimony, which can firm up thin evidence or shake it, though video never slips. All of it is written on the case. The same stat prices the leak: clearing a case over video leaks about half the time, more when the named officer's integrity is low or their statement was already caught out, and the district attorney reads those worst of all. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
+Findings that name an officer open an internal affairs case. Cases are sorted by severity and evidence, with weekly triage and filters; each case still gets its own decision. The officer gives a statement — and what they say may or may not match the bodycam. Integrity is the stat that decides, and being caught disagreeing with the tape costs more of it. The highest-integrity squadmate still standing gives testimony, which can firm up thin evidence or shake it, though video never slips. All of it is written on the case. The same stat prices the leak: clearing a case over video leaks about half the time, more when the named officer's integrity is low or their statement was already caught out, and the district attorney reads those worst of all. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
 
 What civilians suffered at police hands becomes a story: next week if there was video or a crowd, months later if nobody was watching, and sometimes never. Lawsuits settle out of your budget weeks after."""],
 	["The department", """The roster: open an officer's file to send them on a course (close quarters, firearms, judgment, stress, coaching, tactical certification) or to dismiss them. Hiring is a weekly pool of two to four applicants with their full files open — training, judgment, temper, integrity, traits, expected pay. Pick one; the rest walk away, and a new pool comes next week. Recruits spend two weeks at the academy; laterals report at once.
