@@ -125,6 +125,7 @@ func _init() -> void:
 			dep3.next_week()
 			guard += 1
 		_check(who["status"] == "active", "healed after %d week(s)" % guard)
+		_check(not who["file"].is_empty() and String(who["file"].back()["text"]) == "Back on duty.", "the return to duty is entered in the officer's file")
 		dep3 = Department.load_from(PATH)
 	# replay: operation 2 from the saved department, twice, from two fresh loads
 	var da = Department.load_from(PATH)
@@ -144,7 +145,7 @@ func _init() -> void:
 	_money_by_the_book()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 	print("problems: %d" % problems)
-	quit()
+	quit(1 if problems > 0 else 0)
 
 
 ## v0.8.5: the budget, training and internal affairs.
@@ -239,6 +240,13 @@ func _applicants_and_statements() -> void:
 	var d2 = Department.new()
 	d2.from_data(JSON.parse_string(j))
 	_check(JSON.stringify(d2.to_data()) == j and d2.applicants.size() == d.applicants.size(), "the pool survives a save")
+	_check(int(d.to_data().get("version", 0)) == 6, "the applicant pool and course clocks use department save version 6")
+	var old: Dictionary = JSON.parse_string(j)
+	old["version"] = 5
+	old.erase("applicants")
+	old.erase("applicant_week")
+	var old_dept = Department.new()
+	_check(old_dept.from_data(old) and not old_dept.applicants_now().is_empty(), "a version 5 save still loads and rolls its pool on demand")
 	# frozen hiring blocks the choice but not the looking
 	d.balance = -500
 	var before: Array = d.applicants_now()

@@ -1305,12 +1305,13 @@ func cleared_to_fire(o, e) -> bool:
 
 ## Less-lethal-first order: may this officer not shoot e yet? Inside LESS_FIRST_R the
 ## order covers a recognized suspect who is neither firing nor pointing a weapon, so the
-## officer challenges and reaches for OC, a taser or a baton instead. A man attacking, a
-## weapon shown, a civilian (the misjudge path) or anyone beyond the range is untouched.
+## officer challenges and reaches for OC, a taser or a baton instead. A man attacking
+## (aiming or firing), a civilian (the misjudge path) or anyone beyond the range is
+## untouched. A slung long gun is visible, but is not by itself an attack.
 func less_first_blocked(o, e) -> bool:
 	if not o.less_first or not o.judges or not e.alive() or e.civ or e.complying:
 		return false
-	if attacking(e, o) or e.shows_weapon():
+	if attacking(e, o):
 		return false
 	return o.pos.distance_to(e.pos) <= LESS_FIRST_R
 
@@ -1938,7 +1939,13 @@ func _less_lethal(o, e) -> void:
 	if int(o.ticker.get("chal_n_" + e.id, 0)) < less_challenges_needed(o) or e.stunned(t):
 		return
 	var j: Dictionary = o.judged.get(e.id, {})
-	if j.get("v", "") != "unknown" or e.shows_weapon():
+	# The standing tool rule needs an unarmed/unknown person. Less-lethal first
+	# also covers a recognized suspect with a slung weapon inside its short radius;
+	# aiming or firing makes less_first_blocked false and restores the usual rule.
+	if less_first_blocked(o, e):
+		if j.get("v", "") not in ["unknown", "threat"]:
+			return
+	elif j.get("v", "") != "unknown" or e.shows_weapon():
 		return
 	var tool := less_tool(o, e, o.pos.distance_to(e.pos))
 	if tool == "":

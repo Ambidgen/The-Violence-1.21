@@ -569,6 +569,11 @@ func _sync_mounted() -> void:
 
 
 func dispose() -> void:
+	# A mounted operator and its vehicle's seat array hold one another. Break that
+	# cycle before the world and director release their operator/vehicle lists.
+	if w != null:
+		for o in w.ops:
+			o.mounted = null
 	w = null
 
 

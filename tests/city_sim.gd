@@ -90,4 +90,5 @@ func _init() -> void:
 	print("alert states now (green, yellow, red): ", alerts)
 	for dd in w.deaths.slice(maxi(0, w.deaths.size() - 12)):
 		print("  KIA %s %s (%s) %s, by %s (%s), %s, %s" % [w.clock(dd["t"]), dd["name"], dd["rank"], dd["fac_name"], dd["by_name"], dd["by_fac_name"], dd["where"], dd["place"]])
+	w.dispose()
 	quit()

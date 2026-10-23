@@ -27,7 +27,7 @@ const Squads = preload("res://scripts/data/squads.gd")
 const Names = preload("res://scripts/data/names.gd")
 const Courses = preload("res://scripts/data/courses.gd")
 
-const VERSION := 5        # 3: v0.7.5, every officer has a kit; 4: v0.8, pair bonds; 5: v0.8.5, budget, training, cases
+const VERSION := 6        # 4: v0.8, pair bonds; 5: v0.8.5, budget/training/cases; 6: applicant pool and course clocks
 const SAVE_PATH := "user://department.json"
 ## Experience points needed for tiers 1-5 (Green, Blooded, Seasoned, Veteran, Exceptional).
 const XP_TIERS := [0, 6, 18, 40, 80]
@@ -932,13 +932,15 @@ func next_week() -> Array:
 		match r["status"]:
 			"injured":
 				if due:
-					r["status"] = "active"
-					r["file"].append({"week": week, "text": "Back on duty."})
-					lines.append("%s %s is back on duty." % [r["rank"], r["name"]])
+					var studying: bool = String(r.get("course", "")) != ""
+					r["status"] = "training" if studying else "active"
+					if studying:
+						r["out_until"] = int(r["course_until"])
+					r["file"].append({"week": week, "text": "Recovered from their wound." if studying else "Back on duty."})
+					lines.append("%s %s %s." % [r["rank"], r["name"], "has recovered and continues their course" if studying else "is back on duty"])
 			"training":
 				if due:
 					r["status"] = "active"
-					lines.append(_finish_course(r))
 			"academy":
 				if due:
 					r["status"] = "active"
@@ -949,6 +951,13 @@ func next_week() -> Array:
 					r["status"] = "active"
 					r["file"].append({"week": week, "text": "Suspension over; back on duty."})
 					lines.append("%s %s is back from suspension." % [r["rank"], r["name"]])
+		# Classroom courses have their own clock. They can finish while the wound
+		# keeps the officer in hospital, and an officer recovered mid-course stays
+		# unavailable until the course is done.
+		if String(r.get("course", "")) != "" and int(r.get("course_until", 0)) <= week:
+			lines.append(_finish_course(r))
+			if r["status"] == "training":
+				r["status"] = "active"
 		if r["status"] not in ["dead", "fired", "resigned"]:
 			r["trauma"] = maxf(0.0, float(r["trauma"]) - 0.5)
 	# Q9: queued courses start themselves as soon as the officer can take them;

@@ -246,6 +246,12 @@ func _ready() -> void:
 		_front_hook.call_deferred()
 
 
+func _exit_tree() -> void:
+	if world != null:
+		world.dispose()
+		world = null
+
+
 # ------------------------------------------------------------------ configuration
 func _cfg_for(id: String, team: int, slot: int, echelon: String) -> Dictionary:
 	var c := {"id": id, "team": team, "slot": slot, "echelon": echelon, "good": {}, "bad": {},

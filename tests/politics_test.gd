@@ -197,9 +197,9 @@ func _init() -> void:
 			f2["est"] = "raised (about 1 in 5)"
 	_check(Autoplan.want_for(sit) == Autoplan.WANT["event"], "raised chatter: the full ten")
 	var threat_line := ""
-	for ln in Situations.briefing_lines(sit):
-		if String(ln["label"]) == "Threat estimate":
-			threat_line = String(ln["text"])
+	for brief_line in Situations.briefing_lines(sit):
+		if String(brief_line["label"]) == "Threat estimate":
+			threat_line = String(brief_line["text"])
 	_check(threat_line.find("cries wolf") >= 0, "and the briefing carries the confidence: %s" % threat_line)
 	# a version 1 save (before v0.9) loads, with the city starting fresh
 	var old: Dictionary = c2.to_data()
