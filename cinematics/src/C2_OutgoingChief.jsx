@@ -7,11 +7,11 @@ import {C, FONT, clamp, prog, Paper, Panel, Caption, Stamp, Draw, Fades, Sfx, Be
 export const C2_LEN = 1230;
 
 const NOTE = [
+  'The Bridge Street briefing was mine. The eviction order was yours to sign.',
   'You will not answer everything. Pick what matters.',
-  'A hostage taking, or a crew house left alone, comes back. A quiet warrant can wait a week.',
-  'Send at least four through a door. Plates and a helmet for anyone going in.',
-  'What you clear, the press may find. What you punish, the union remembers.',
-  'The election is in forty weeks. Whoever wins decides what happens to you.',
+  'A hostage call or a crew house left alone comes back. A quiet warrant can wait.',
+  'Send four through a door. Plates and a helmet for anyone going in.',
+  'The press may find what you clear. The union remembers discipline. Forty weeks to the election.',
 ];
 const NOTE0 = 300;
 const CPS = 46;
@@ -147,7 +147,7 @@ export const C2_OutgoingChief = () => {
       <Bed name="amb_office" volume={0.6} total={C2_LEN} />
       {(f < P0 + 10 || f >= R0) && <Desk f={f >= R0 ? f - R0 + 300 : f} ring={f >= R0 + 30} />}
       {f < NOTE0 + 20 && (
-        <Caption at={20} until={NOTE0 + 16} x={110} y={70} w={860} size={36} text={'THE LAST CHIEF LEFT IN A HURRY.\nHE LEFT A NOTE.'} />
+        <Caption at={20} until={NOTE0 + 16} x={110} y={70} w={860} size={36} text={'THE LAST CHIEF LEFT THE DESK.\nTHE SIGNATURE DID NOT.'} />
       )}
       {f >= NOTE0 && f < P0 + 10 && <Note f={f} />}
       {f >= P0 && f < R0 + 10 && (
