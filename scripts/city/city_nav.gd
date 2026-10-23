@@ -18,6 +18,14 @@ var _street_spots := {}     # Vector2i (2 m) -> [{p, gap}]
 var _next_id := 0
 var path_calls := 0
 var path_us := 0
+## The street graph and its gate nodes are static for a city. Cache only routes
+## between two lot gates; temporary street endpoints and building paths still run
+## through their original code, so dynamic movement decisions are untouched.
+var path_cache_hits := 0
+var path_cache_misses := 0
+var _gate_routes := {}
+var _gate_route_order: Array = []
+const GATE_ROUTE_CACHE_MAX := 4096
 const TMP_A := 900000
 const TMP_B := 900001
 const TMP_C := 900002
@@ -26,6 +34,10 @@ const TMP_C := 900002
 func build(lv) -> void:
 	level = lv
 	geom = lv.geom
+	_gate_routes.clear()
+	_gate_route_order.clear()
+	path_cache_hits = 0
+	path_cache_misses = 0
 	var walk: float = lv.WALK_OFF
 	# intersections: centre and four sidewalk corners
 	for iy in lv.NROWS + 1:
@@ -282,6 +294,8 @@ func _street_path(a: Vector2, b: Vector2, la: int, lb: int) -> PackedVector2Arra
 	var post := PackedVector2Array()
 	var ida := -1
 	var idb := -1
+	var gate_route := la >= 0 and lb >= 0
+	var cache_key := ""
 	if la >= 0:
 		ida = gate_node[la]
 	else:
@@ -294,6 +308,12 @@ func _street_path(a: Vector2, b: Vector2, la: int, lb: int) -> PackedVector2Arra
 	if ida < 0 or idb < 0:
 		_clear_temp()
 		return PackedVector2Array()
+	if gate_route:
+		cache_key = "%d:%d" % [ida, idb]
+		if _gate_routes.has(cache_key):
+			path_cache_hits += 1
+			return _gate_routes[cache_key]
+		path_cache_misses += 1
 	var path := PackedVector2Array()
 	if ida == idb:
 		path.append(astar.get_point_position(ida))
@@ -309,6 +329,12 @@ func _street_path(a: Vector2, b: Vector2, la: int, lb: int) -> PackedVector2Arra
 		post.reverse()
 		out.append_array(post)
 		out.append(b)
+	if gate_route:
+		if _gate_routes.size() >= GATE_ROUTE_CACHE_MAX and not _gate_route_order.is_empty():
+			var oldest: String = _gate_route_order.pop_front()
+			_gate_routes.erase(oldest)
+		_gate_routes[cache_key] = out
+		_gate_route_order.append(cache_key)
 	return out
 
 

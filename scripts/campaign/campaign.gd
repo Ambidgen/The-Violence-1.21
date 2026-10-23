@@ -24,6 +24,10 @@ var past: Array = []           # every situation of earlier weeks, with its outc
 var rng := RandomNumberGenerator.new()
 var politics                   # v0.9: wards, allies, candidates, the press, the election
 var pressure := {}             # Q7: {wards: [{gang, hot, quiet} x6]} from the endless battle; {} = no city read yet
+# Presentation history is additive save data: it never enters simulation decisions.
+var short_history := {}         # key -> week last played; each shipped short once per campaign
+var short_last_week := -99
+const SHORT_COOLDOWN_WEEKS := 3
 
 
 func start(seed_v: int) -> void:
@@ -53,6 +57,18 @@ func _new_board() -> Array:
 
 func over() -> bool:
 	return politics != null and politics.ended
+
+
+## Rare interstitials: one play per key per campaign, and no ordinary shorts in
+## adjacent weeks. Election night may override the gap, but not the per-key limit.
+func claim_short(key: String, force := false) -> bool:
+	if short_history.has(key):
+		return false
+	if not force and week() - int(short_last_week) < SHORT_COOLDOWN_WEEKS:
+		return false
+	short_history[key] = week()
+	short_last_week = week()
+	return true
 
 
 ## An operation's consequences for the city (v0.9). Returns readable lines.
@@ -156,6 +172,9 @@ func end_week() -> Array:
 	# the city's week: what was left undone, what lands, the polls; at week 40 the election
 	lines.append_array(politics.week_end(dept.week, board, dept))
 	lines.append_array(dept.next_week())
+	var triage := Department.triage_line(dept.cases, dept.week)
+	if triage != "":
+		lines.append(triage)
 	# Q7: if the endless battle has been watched since, the new board knows it —
 	# the city file is re-read; without one the campaign keeps its own reading
 	var fresh := load_city_pressure()
@@ -179,7 +198,7 @@ static func _brief_record(s: Dictionary) -> Dictionary:
 func to_data() -> Dictionary:
 	return {"version": VERSION, "seed": seed_val, "rng_state": str(rng.state), "department": dept.to_data(),
 		"board": board.duplicate(true), "past": past.duplicate(true), "politics": politics.to_data(),
-		"pressure": pressure.duplicate(true)}
+		"pressure": pressure.duplicate(true), "short_history": short_history.duplicate(true), "short_last_week": short_last_week}
 
 
 func from_data(d: Dictionary) -> bool:
@@ -195,6 +214,8 @@ func from_data(d: Dictionary) -> bool:
 	board = d.get("board", [])
 	past = d.get("past", [])
 	pressure = d.get("pressure", {})   # version 2 and earlier: no city was ever read
+	short_history = d.get("short_history", {}).duplicate(true)
+	short_last_week = int(d.get("short_last_week", -99))
 	# version 1 (before v0.9) had no politics: the city starts from the wards' trust now
 	politics = Politics.new()
 	politics.from_data(d.get("politics", {}), seed_val)

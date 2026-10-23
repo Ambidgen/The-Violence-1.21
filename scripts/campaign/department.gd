@@ -609,6 +609,60 @@ const EVIDENCE_ORDER := ["video", "witness", "radio log", "heard", "none"]
 const CASE_WEEKS := 3           # open cases close themselves, without action, after this long
 
 
+## Triage changes the order in which the chief sees cases, never their evidence or
+## the available individual decisions. Severity is primary; evidence breaks ties.
+static func case_is_urgent(c: Dictionary, at_week: int) -> bool:
+	return at_week - int(c.get("week", at_week)) >= CASE_WEEKS - 1
+
+
+static func sorted_open_cases(case_list: Array, at_week: int) -> Array:
+	var out: Array = case_list.filter(func(c): return c.get("status", "open") == "open")
+	out.sort_custom(func(a, b):
+		var sa := CASE_ORDER.find(a.get("kind", ""))
+		var sb := CASE_ORDER.find(b.get("kind", ""))
+		if sa != sb:
+			return (sa if sa >= 0 else 99) < (sb if sb >= 0 else 99)
+		var ea := EVIDENCE_ORDER.find(a.get("strength", "none"))
+		var eb := EVIDENCE_ORDER.find(b.get("strength", "none"))
+		if ea != eb:
+			return (ea if ea >= 0 else 99) < (eb if eb >= 0 else 99)
+		var ua := case_is_urgent(a, at_week)
+		var ub := case_is_urgent(b, at_week)
+		if ua != ub:
+			return ua
+		if int(a.get("week", 0)) != int(b.get("week", 0)):
+			return int(a.get("week", 0)) < int(b.get("week", 0))
+		return String(a.get("id", "")) < String(b.get("id", "")))
+	return out
+
+
+static func case_triage(case_list: Array, at_week: int) -> Dictionary:
+	var open: Array = case_list.filter(func(c): return c.get("status", "open") == "open")
+	var grave := 0
+	var video := 0
+	var urgent := 0
+	var untested := 0
+	for c in open:
+		var severity := CASE_ORDER.find(c.get("kind", ""))
+		if severity >= 0 and severity <= 1:
+			grave += 1
+		if c.get("strength", "none") == "video":
+			video += 1
+		if case_is_urgent(c, at_week):
+			urgent += 1
+		if c.get("statement", "") == "untested":
+			untested += 1
+	return {"open": open.size(), "grave": grave, "video": video, "urgent": urgent, "untested": untested}
+
+
+static func triage_line(case_list: Array, at_week: int) -> String:
+	var t := case_triage(case_list, at_week)
+	if int(t["open"]) == 0:
+		return ""
+	return "IA triage: %d open · %d grave · %d video · %d due before lapse · %d untested statements." % [
+		t["open"], t["grave"], t["video"], t["urgent"], t["untested"]]
+
+
 ## Q3: the officer's own account of it. Where there is evidence to check it against
 ## (video or witnesses), a low-integrity officer's statement can simply not match;
 ## at 65 integrity and above it always does. With nothing to check against, the

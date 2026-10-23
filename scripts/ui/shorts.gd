@@ -36,6 +36,7 @@ static var _cache: Dictionary = {}
 var player: VideoStreamPlayer
 var overlay: Control
 var hint: Label
+var skip_button: Button
 var busy := false
 
 var _key := ""
@@ -79,6 +80,16 @@ func _ready() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hint.modulate.a = 0.0
 	add_child(hint)
+
+	skip_button = Button.new()
+	skip_button.text = "Skip  [Space]"
+	skip_button.focus_mode = Control.FOCUS_NONE
+	skip_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	skip_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	skip_button.position = Vector2(24, -52)
+	skip_button.size = Vector2(150, 34)
+	skip_button.pressed.connect(stop)
+	add_child(skip_button)
 
 
 # ------------------------------------------------------------------ the catalogue

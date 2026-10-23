@@ -9,14 +9,15 @@ extends RefCounted
 ## edge of its territory, one squad of up to five per room. When that edge is full, its
 ## soldiers and militia form an assault team and go after a nearby building.
 ##
-## Gang gunfire is reported. A report within 500 m of an original report from the last
-## five minutes is a duplicate of that incident; otherwise it opens a new incident, queued
-## first come first served for the nearest free QRF (ten special-operations officers in
-## two vans) to search the three buildings nearest the report, then return to base.
-## Two patrol convoys (two cars, four officers) drive each precinct and get out when they
-## hear shooting. Police paramedics go straight to downed officers; hospital ambulances go
-## in for everyone else once a QRF has reported all clear. A downed casualty has five
-## minutes to reach an ambulance.
+## Gang gunfire is reported. A report within 140 m of an original report from the last
+## 90 seconds, in the same precinct, is a duplicate of that incident; otherwise it opens
+## a new incident, queued first come first served for the nearest free QRF (ten
+## special-operations officers in two vans) to search the three buildings nearest the
+## report, then return to base. Two patrol convoys (two cars, four officers) drive each
+## precinct and get out when they hear shooting. Police paramedics go straight to downed
+## officers; hospital ambulances go in after all clear, or earlier for living casualties
+## when a QRF is assigned and the incident area has been locally quiet. A downed casualty
+## has five minutes to reach an ambulance.
 
 const Op = preload("res://scripts/sim/op.gd")
 const Habits = preload("res://scripts/data/habits.gd")
@@ -34,8 +35,10 @@ const GANG_DEFS := [
 const ECH_MIX := [["untrained", 0.7], ["militia", 0.2], ["regular", 0.1]]
 const CAPTURE_TIME := 60.0
 const PUSH_EVERY := 120.0
-const REPORT_RADIUS := 500.0
-const REPORT_WINDOW := 300.0
+const REPORT_RADIUS := 140.0       # metres: a precinct-scale cluster, not a whole ward
+const REPORT_WINDOW := 90.0        # seconds from the original report
+const MEDICAL_QUIET := 12.0        # no nearby gunfire before early EMS entry
+const MEDICAL_RETRY := 30.0
 const HIRE_DELAY := 120.0
 const RECOVER_DELAY := 120.0
 const AMB_RADIUS := 120.0
@@ -536,6 +539,8 @@ func tick() -> void:
 		t0 = _pt("d_medic", t0)
 		_qrf_jobs()
 		t0 = _pt("d_qrf", t0)
+		_early_medical()
+		t0 = _pt("d_ems", t0)
 		_convoy_jobs()
 		t0 = _pt("d_convoy", t0)
 	if _tick % 30 == 0:
@@ -1088,9 +1093,29 @@ func _land_push(ti: int) -> void:
 
 
 # ================================================================== reports and the QRF
+static func report_cluster_match(inc: Dictionary, p: Vector2, now: float, same_precinct := true) -> bool:
+	return same_precinct and now - float(inc.get("t", 0.0)) <= REPORT_WINDOW and p.distance_to(inc.get("p", Vector2.INF)) <= REPORT_RADIUS
+
+
+## Pure predicate for the guarded early EMS rule, shared by the director and its
+## regression test. It does not claim that the whole incident is safe.
+static func early_medical_ready(inc: Dictionary, now: float, spots: Array) -> bool:
+	if inc.get("state", "") not in ["assigned", "searching"] or int(inc.get("qrf", -1)) < 0:
+		return false
+	if now - float(inc.get("t", 0.0)) < 20.0 or now - float(inc.get("medical_t", -INF)) < MEDICAL_RETRY:
+		return false
+	for h in spots:
+		if now - float(h.get("t", 0.0)) >= MEDICAL_QUIET:
+			continue
+		for p in inc.get("points", []):
+			if (h.get("p", Vector2.INF) as Vector2).distance_to(p) < AMB_RADIUS:
+				return false
+	return true
+
+
 ## Gang gunfire is called in. A caller near a report made in the last 20 s adds nothing;
-## otherwise the report is a duplicate of an incident within 500 m opened in the last
-## five minutes, or opens a new one.
+## otherwise the report is a duplicate of an incident within 140 m opened in the last
+## 90 seconds in this precinct, or opens a new one.
 func on_gunshot(src) -> void:
 	_hotspot(src.pos)
 	if src.faction == POLICE or src.medic:
@@ -1106,7 +1131,8 @@ func on_gunshot(src) -> void:
 	stats["reports"] += 1
 	_pstat_at(p, "reports")   # Q7
 	for inc in incidents:
-		if w.t - inc["t"] <= REPORT_WINDOW and p.distance_to(inc["p"]) <= REPORT_RADIUS:
+		var same_precinct := not lv.has_method("precinct_at") or lv.precinct_at(p) == lv.precinct_at(inc["p"])
+		if report_cluster_match(inc, p, w.t, same_precinct):
 			inc["dups"] += 1
 			inc["points"].append(p)
 			reports.append({"t": w.t, "p": p, "kind": "duplicate", "inc": inc["id"]})
@@ -1700,12 +1726,25 @@ func _medic_jobs() -> void:
 			_amb_step(v2, h["stop"], -1, false)
 
 
-## Hospital ambulances answer an all-clear: every casualty within 120 m of the incident's
-## report points, the living first.
-func _call_ambulances(inc: Dictionary) -> void:
+## Before all-clear, EMS may enter only for a living, non-police casualty after a
+## QRF has been assigned and no recent gunfire is near any report point. This is a
+## local-quiet staging rule, not an assumption that the whole incident is safe.
+func _early_medical() -> void:
+	for inc in incidents:
+		if not early_medical_ready(inc, w.t, hotspots):
+			continue
+		inc["medical_t"] = w.t
+		_call_ambulances(inc, true)
+
+
+## Hospital ambulances answer an all-clear, or the guarded early-medical rule above:
+## every casualty within 120 m of the incident's report points, the living first.
+func _call_ambulances(inc: Dictionary, living_only := false) -> void:
 	var cas: Array = []
 	for o in w.ops:
 		if o.alive() or o.carried or o.mounted != null or o.ticker.get("claimed_by", -1) >= 0:
+			continue
+		if living_only and (o.state != "down" or o.judges):
 			continue
 		var near := false
 		for p in inc["points"]:

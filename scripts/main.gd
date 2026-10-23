@@ -38,6 +38,7 @@ const Fog = preload("res://scripts/view/fog.gd")
 const ReplayView = preload("res://scripts/view/replay_view.gd")
 const PlanMarks = preload("res://scripts/view/plan_marks.gd")
 const OpsUI = preload("res://scripts/ui/ops_ui.gd")
+const Pacing = preload("res://scripts/sim/pacing.gd")
 const PX := 40.0
 const DT := 1.0 / 30.0
 
@@ -109,6 +110,13 @@ var replay_speed := 2.0
 var replay_play := false
 var replay_on := false
 var _op_done := false
+# Contact-aware playback is a presentation throttle only. The requested speed stays
+# selected in the UI while a short quiet timer temporarily caps the effective speed.
+var adaptive_slow_until := 0.0
+var adaptive_reason := ""
+var _adaptive_log_next := 0
+var _adaptive_event_next := 0
+var _ia_before_run := {}
 
 # command-line test hooks: --autorun --seed=N --speed=X --shot=path --shot-at=T --setup-shot=path
 var _args := {}
@@ -777,6 +785,9 @@ func ops_new_campaign() -> void:
 	campaign = Campaign.new()
 	campaign.start(randi_range(1, 999999))
 	dept = campaign.dept
+	ops_ui.guide_dismissed = false
+	ops_ui.guide_active = true
+	ops_ui.case_filter = "all"
 	_save()
 	_default_selection()
 	ops_ui.show_board(["A new campaign: week 1."])
@@ -857,6 +868,9 @@ func ops_run() -> void:
 	if campaign.plan_members(cur_sit).is_empty():
 		return
 	plan["bodycams"] = dept.bodycams
+	_ia_before_run.clear()
+	for c in dept.cases:
+		_ia_before_run[c.get("id", "")] = true
 	var b: Dictionary = Operation.build_planned(cur_sit, plan, dept, level, nav)
 	if world != null:
 		world.dispose()
@@ -894,6 +908,10 @@ func ops_run() -> void:
 	_op_done = false
 	view_t = -1.0
 	acc = 0.0
+	adaptive_slow_until = 0.0
+	adaptive_reason = ""
+	_adaptive_log_next = 0
+	_adaptive_event_next = 0
 	paused = false
 	_banner_done = true
 	ui.banner.visible = false
@@ -965,7 +983,28 @@ func _op_finished() -> void:
 	sound.play_ui("stamp", -2.0)
 	_views_by_fog()
 	ui.show_banner("%s   ·   %d" % [String(res["label"]).to_upper(), int(res["score"])])
-	ops_ui.show_debrief(res, world, lines)
+	var present := func(): ops_ui.show_debrief(res, world, lines)
+	var short_key := ""
+	var short_text := {}
+	for o in world.ops:
+		if not o.judges or o.state not in ["down", "dead"]:
+			continue
+		short_key = "s12_end_of_watch" if o.state == "dead" else "s06_officer_down"
+		short_text = {"name": o.name, "badge": "Week %d · operation %d" % [dept.week, dept.ops_run],
+			"dates": "Week %d · operation %d" % [dept.week, dept.ops_run]}
+		break
+	if short_key == "":
+		for c in dept.cases:
+			if _ia_before_run.has(c.get("id", "")) or c.get("kind", "") not in ["civilian_hit_by_police", "excessive_force"]:
+				continue
+			var r: Dictionary = dept.get_officer(c.get("officer", ""))
+			short_key = "s09_case"
+			short_text = {"officer": "%s %s" % [r.get("rank", ""), r.get("name", "")], "summary": c.get("text", "")}
+			break
+	if short_key != "":
+		play_consequence_short(short_key, short_text, present)
+	else:
+		present.call()
 
 
 func ops_replay_play(on: bool) -> void:
@@ -1134,6 +1173,51 @@ func rerun(new_seed: bool) -> void:
 
 func set_speed(sp: float) -> void:
 	speed = sp
+	adaptive_slow_until = 0.0
+	adaptive_reason = ""
+
+
+func effective_speed() -> float:
+	if not op_mode or world == null:
+		return speed
+	return Pacing.speed_for(speed, world.t, adaptive_slow_until, bool(Settings.get_v("adaptive_speed")))
+
+
+func adaptive_status() -> String:
+	if not op_mode or not bool(Settings.get_v("adaptive_speed")):
+		return ""
+	if world != null and world.t < adaptive_slow_until:
+		return "%s · 1x playback; fast-forward resumes after quiet" % adaptive_reason.capitalize()
+	return "Contact-aware fast-forward is on: contact, casualties and important radio briefly return to 1x."
+
+
+func _adaptive_trigger(reason: String) -> void:
+	if speed <= 1.0:
+		return
+	if world.t >= adaptive_slow_until or reason == "casualty":
+		adaptive_reason = reason
+	adaptive_slow_until = maxf(adaptive_slow_until, world.t + Pacing.hold_seconds(reason))
+
+
+## Inspect only newly produced records, after every simulation step. A contact can
+## therefore stop a fast-forward burst in the same rendered frame.
+func _adaptive_after_step() -> void:
+	if not op_mode or world == null or not bool(Settings.get_v("adaptive_speed")) or speed <= 1.0:
+		return
+	_adaptive_log_next = maxi(_adaptive_log_next, world.log_base)
+	var log_end: int = world.log_base + world.log_lines.size()
+	while _adaptive_log_next < log_end:
+		var ln: Dictionary = world.log_lines[_adaptive_log_next - world.log_base]
+		_adaptive_log_next += 1
+		var lr := Pacing.log_reason(ln)
+		if lr != "":
+			_adaptive_trigger(lr)
+	while _adaptive_event_next < world.events.size():
+		var ev: Dictionary = world.events[_adaptive_event_next]
+		_adaptive_event_next += 1
+		var er := Pacing.event_reason(ev)
+		if er != "":
+			_adaptive_trigger(er)
 
 
 func set_paused(on: bool) -> void:
@@ -1178,12 +1262,28 @@ func _opening_done() -> void:
 ## short plays on its drawn-in defaults. Honours the same "intro" setting as the opening
 ## and never blocks: if the video is not shipped, `after` runs at once.
 func play_short(key: String, text := {}, after := Callable()) -> bool:
-	if not bool(Settings.get_v("intro")) or shorts == null or not shorts.available(key):
+	if not bool(Settings.get_v("intro")) or shorts == null or shorts.busy or DisplayServer.get_name() == "headless" or not shorts.available(key):
 		if after.is_valid():
 			after.call()
 		return false
 	sound.ambience("")
 	return shorts.play(key, text, after)
+
+
+## A consequential campaign beat, subject to the saved repetition policy. The
+## callback is always run exactly once, including a skip, a busy player, or a
+## missing/headless video. No simulation random numbers are consumed here.
+func play_consequence_short(key: String, text := {}, after := Callable(), force := false) -> bool:
+	if campaign == null or shorts == null or shorts.busy or not bool(Settings.get_v("intro")) or DisplayServer.get_name() == "headless" or not shorts.available(key):
+		if after.is_valid():
+			after.call()
+		return false
+	if not campaign.claim_short(key, force):
+		if after.is_valid():
+			after.call()
+		return false
+	_save()  # a quit during the video cannot make it repeat on reload
+	return play_short(key, text, after)
 
 
 var _perf := {"frames": 0, "sim": 0, "view": 0, "steps": 0, "draws": 0}
@@ -1195,7 +1295,7 @@ func _process(delta: float) -> void:
 	_pf0 = Time.get_ticks_usec()
 	_sim_us = 0
 	sound.ambience("" if (cutscene.visible or (shorts != null and shorts.visible)) else ("amb_city" if mode == "run" and not replay_on else "amb_office"))
-	if replay_on and world != null:
+	if replay_on and world != null and (shorts == null or not shorts.busy):
 		if replay_play:
 			replay_t = minf(replay_t + delta * replay_speed, world.t)
 			if replay_t >= world.t:
@@ -1204,15 +1304,21 @@ func _process(delta: float) -> void:
 		ops_ui.refresh_replay(replay_t, world.t, replay_play)
 	if mode == "run" and world != null and view_t < 0.0 and not replay_on:
 		doors_view.refresh()
-	if mode == "run" and world != null:
+	if mode == "run" and world != null and (shorts == null or not shorts.busy):
 		var steps := 0
 		if not paused and not world.over:
-			acc += delta * speed
+			acc += delta * effective_speed()
 			var t0 := Time.get_ticks_usec()
 			while acc >= DT and not world.over:
+				var old_slow := adaptive_slow_until
 				world.step()
+				_adaptive_after_step()
 				acc -= DT
 				steps += 1
+				# Do not spend the rest of a high-speed burst after a new contact.
+				if adaptive_slow_until > old_slow and effective_speed() < speed:
+					acc = minf(acc, DT)
+					break
 				if Time.get_ticks_usec() - t0 > 33000:
 					break
 			acc = minf(acc, DT * 3.0)
@@ -1235,6 +1341,7 @@ func _process(delta: float) -> void:
 			if (ev["type"] == "blood" or ev["type"] == "shot") and views.has(ev.get("id", "")):
 				views[ev["id"]].event(ev)
 		world.events.clear()
+		_adaptive_event_next = 0
 		Rig.detail = cam.zoom.x >= 0.8
 		var vs := get_viewport().get_visible_rect().size / cam.zoom
 		Rig.view = Rect2(cam.get_screen_center_position() - vs / 2.0, vs).grow(80.0)
@@ -1402,6 +1509,9 @@ func front_closed() -> void:
 
 
 func settings_changed() -> void:
+	if not bool(Settings.get_v("adaptive_speed")):
+		adaptive_slow_until = 0.0
+		adaptive_reason = ""
 	_ink_changed()
 
 
@@ -1541,7 +1651,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				ui.pause_btn.set_pressed_no_signal(paused)
 			elif k >= KEY_1 and k <= KEY_7:
 				var i := k - KEY_1
-				speed = UI.SPEEDS[i]
+				set_speed(UI.SPEEDS[i])
 				ui.speed_buttons[i].set_pressed_no_signal(true)
 		if k == KEY_HOME:
 			_fit_camera()

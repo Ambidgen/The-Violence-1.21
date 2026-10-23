@@ -68,13 +68,15 @@ func _init() -> void:
 			for k in keys:
 				if w.prof[k] / 1800.0 / 1000.0 >= 0.05:
 					pf.append("%s %.2f" % [k, w.prof[k] / 1800.0 / 1000.0])
-			print("    ", ", ".join(pf), "   paths %d (%.1f ms)" % [nav.path_calls, nav.path_us / 1000.0])
+			print("    ", ", ".join(pf), "   paths %d (%.1f ms)  gate cache %d hits / %d misses" % [nav.path_calls, nav.path_us / 1000.0, nav.path_cache_hits, nav.path_cache_misses])
 			if not w.prof_n.is_empty():
 				print("    path calls: ", w.prof_n)
 			w.prof_n = {}
 			w.prof = {}
 			nav.path_calls = 0
 			nav.path_us = 0
+			nav.path_cache_hits = 0
+			nav.path_cache_misses = 0
 			worst = 0
 			chunk_t = now
 	print("ran %.0f s of battle in %.1f s; stats %s" % [w.t, (Time.get_ticks_usec() - tw) / 1e6, str(d.stats)])
