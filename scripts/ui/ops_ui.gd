@@ -412,10 +412,9 @@ func _roster() -> void:
 	if flash != "":
 		_text(box, flash, INK, 11)
 		flash = ""
-	var hh := _h(box)
-	_btn(hh, "Hire a recruit ($%s)" % Department.money(Courses.RECRUIT + Equipment.cost(Equipment.default_kit())), func(): _hire(false))
-	_btn(hh, "Hire laterally ($%s)" % Department.money(Courses.LATERAL + Equipment.cost(Equipment.default_kit())), func(): _hire(true))
-	_text(box, "A recruit spends two weeks at the academy; a lateral hire has three to six years elsewhere and reports at once. Click an officer to open their file: training, and dismissal.", GREY, 10)
+	_applicants()
+	_sep()
+	_text(box, "Click an officer to open their file: training, and dismissal.", GREY, 10)
 	var order: Array = d.officers.filter(func(r): return r["status"] not in ["dead", "fired", "resigned"])
 	order.sort_custom(func(a, b):
 		var ra: int = Orders.rank_i(a)

@@ -112,7 +112,7 @@ static func make(type: String, seed_val: int, week := 1, idx := 0, trusts := [],
 		var wts: Array = []
 		for i in WARDS.size():
 			var pull: float = float(pw[i].get("gang", 0.0)) if type == "gang" else float(pw[i].get("hot", 0.0))
-			var wt: float = (1.0 + 2.0 * pull) * (1.0 - 0.4 * float(pw[i].get("quiet", 0.0)))
+			var wt: float = (1.0 + 4.0 * pull) * (1.0 - 0.4 * float(pw[i].get("quiet", 0.0)))
 			wts.append(wt)
 			total += wt
 		var r := rng.randf() * total
