@@ -1131,7 +1131,7 @@ func on_gunshot(src) -> void:
 	stats["reports"] += 1
 	_pstat_at(p, "reports")   # Q7
 	for inc in incidents:
-		var same_precinct := not lv.has_method("precinct_at") or lv.precinct_at(p) == lv.precinct_at(inc["p"])
+		var same_precinct: bool = not lv.has_method("precinct_at") or lv.precinct_at(p) == lv.precinct_at(inc["p"])
 		if report_cluster_match(inc, p, w.t, same_precinct):
 			inc["dups"] += 1
 			inc["points"].append(p)

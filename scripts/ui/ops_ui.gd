@@ -40,10 +40,6 @@ var _sliding := false  # the panel itself is moving a slider: not the player
 var kit_open := ""  # Force screen: the officer whose kit is being edited (v0.7.5)
 var roster_open := ""  # Roster: the officer whose file is open (v0.8.5)
 var flash := ""  # a one-line answer to the last thing tried (v0.8.5)
-var _sliding := false        # the panel itself is moving a slider: not the player
-var kit_open := ""           # Force screen: the officer whose kit is being edited (v0.7.5)
-var roster_open := ""        # Roster: the officer whose file is open (v0.8.5)
-var flash := ""              # a one-line answer to the last thing tried (v0.8.5)
 var case_filter := "all"      # IA triage: all, grave, video, due
 var guide_active := false     # first-operation guide, until the debrief returns to the board
 var guide_dismissed := false
@@ -809,22 +805,14 @@ func _dept_strip(parent: Control) -> void:
 		11
 	)
 
-
+	if nc > 0:
+		_text(v, Department.triage_line(d.cases, d.week), Ink.accent(0.85) if int(Department.case_triage(d.cases, d.week)["urgent"]) > 0 else GREY, 10)
 const STATUS_WORDS := {
 	"injured": "out injured until week %d",
 	"training": "on a course until week %d",
 	"academy": "at the academy until week %d",
 	"suspended": "suspended until week %d"
 }
-	_text(v, "Morale %d%s   ·   %d internal affairs case%s open" % [d.morale,
-		" (low: more stress in every operation)" if d.morale < Courses.MORALE0 else "",
-		nc, "" if nc == 1 else "s"], GREY, 11)
-	if nc > 0:
-		_text(v, Department.triage_line(d.cases, d.week), Ink.accent(0.85) if int(Department.case_triage(d.cases, d.week)["urgent"]) > 0 else GREY, 10)
-
-
-const STATUS_WORDS := {"injured": "out injured until week %d", "training": "on a course until week %d",
-	"academy": "at the academy until week %d", "suspended": "suspended until week %d"}
 
 
 func _status_of(r: Dictionary, busy: Dictionary) -> String:
@@ -854,29 +842,9 @@ func _roster() -> void:
 	if flash != "":
 		_text(box, flash, INK, 11)
 		flash = ""
-	var hh := _h(box)
-	_btn(
-		hh,
-		(
-			"Hire a recruit ($%s)"
-			% Department.money(Courses.RECRUIT + Equipment.cost(Equipment.default_kit()))
-		),
-		func(): _hire(false)
-	)
-	_btn(
-		hh,
-		(
-			"Hire laterally ($%s)"
-			% Department.money(Courses.LATERAL + Equipment.cost(Equipment.default_kit()))
-		),
-		func(): _hire(true)
-	)
-	_text(
-		box,
-		"A recruit spends two weeks at the academy; a lateral hire has three to six years elsewhere and reports at once. Click an officer to open their file: training, and dismissal.",
-		GREY,
-		10
-	)
+	_applicants()
+	_sep()
+	_text(box, "Click an officer to open their file: training, and dismissal.", GREY, 10)
 	var order: Array = d.officers.filter(
 		func(r): return r["status"] not in ["dead", "fired", "resigned"]
 	)
@@ -888,16 +856,6 @@ func _roster() -> void:
 				return ra > rb
 			return int(a["xp"]) > int(b["xp"])
 	)
-	_applicants()
-	_sep()
-	_text(box, "Click an officer to open their file: training, and dismissal.", GREY, 10)
-	var order: Array = d.officers.filter(func(r): return r["status"] not in ["dead", "fired", "resigned"])
-	order.sort_custom(func(a, b):
-		var ra: int = Orders.rank_i(a)
-		var rb: int = Orders.rank_i(b)
-		if ra != rb:
-			return ra > rb
-		return int(a["xp"]) > int(b["xp"]))
 	var busy: Dictionary = main.campaign.committed()
 	for r in order:
 		var st: String = _status_of(r, busy)
@@ -1419,8 +1377,6 @@ func _cases() -> void:
 		GREY,
 		10
 	)
-	var open: Array = d.open_cases()
-	_text(box, "Every finding the incident record ties to an officer, and every broken order, opens a case. Clear it, send the officer to a use-of-force review, suspend them for two weeks without pay, or dismiss them. A case nobody decides lapses after three weeks. The city watches: the union your discipline, the coalition and the DA what you clear.", GREY, 10)
 	var triage := Department.case_triage(d.cases, d.week)
 	_text(box, "WEEKLY TRIAGE  ·  %d open  ·  %d grave  ·  %d video  ·  %d due before lapse  ·  %d untested" % [triage["open"], triage["grave"], triage["video"], triage["urgent"], triage["untested"]], INK, 11)
 	var filters := _h(box)
@@ -1466,46 +1422,6 @@ func _cases() -> void:
 			INK,
 			11
 		)
-		_text(
-			v,
-			(
-				"Judgment %d  ·  integrity %d  ·  %d earlier case%s"
-				% [
-					int(r.get("judgment", 0)),
-					int(r.get("integrity", 0)),
-					(
-						d
-						. cases
-						. filter(
-							func(x): return x["officer"] == c["officer"] and x["status"] == "closed"
-						)
-						. size()
-					),
-					(
-						""
-						if (
-							(
-								d
-								. cases
-								. filter(
-									func(x):
-										return (
-											x["officer"] == c["officer"] and x["status"] == "closed"
-										)
-								)
-								. size()
-							)
-							== 1
-						)
-						else "s"
-					)
-				]
-			),
-			GREY,
-			10
-		)
-		_text(v, "%s  ·  %s %s  ·  week %d" % [c["id"], r.get("rank", ""), r.get("name", "?"), int(c["week"])], INK, 13)
-		_text(v, "%s: %s (%s). Evidence: %s." % [Department.CASE_KINDS.get(c["kind"], c["kind"]), c["text"], c["place"], c["strength"]], INK, 11)
 		var severity := Department.CASE_ORDER.find(c.get("kind", ""))
 		var badges: Array = []
 		if severity >= 0 and severity <= 1:
@@ -1682,8 +1598,6 @@ func show_plan() -> void:
 			Ink.accent(0.9) if d.frozen() else GREY,
 			10
 		)
-		_text(box, "Account $%s%s. New kit is bought at cost; kit handed back sells for half." % [Department.money(d.balance),
-			" (frozen: no new kit)" if d.frozen() else ""], Ink.accent(0.9) if d.frozen() else GREY, 10)
 	if tab > 0:
 		_risk_card(s, false)
 	match tab:
@@ -2684,7 +2598,6 @@ func refresh_run(w, fog) -> void:
 		("REWIND  " if main.view_t >= 0.0 else "")
 		+ "%02d:%04.1f" % [int(shown_t / 60.0), fmod(shown_t, 60.0)]
 	)
-	_run_refs["clock"].text = ("REWIND  " if main.view_t >= 0.0 else "") + "%02d:%04.1f" % [int(shown_t / 60.0), fmod(shown_t, 60.0)]
 	_run_refs["pacing"].text = main.adaptive_status()
 	_run_refs["pause"].set_pressed_no_signal(main.paused)
 	var sl: HSlider = _run_refs["slider"]
@@ -2718,18 +2631,16 @@ func refresh_run(w, fog) -> void:
 					alive += 1
 			var ob: Dictionary = el.get("obj", {})
 			var what: String = Orders.OBJECTIVES.get(ob.get("kind", ""), {}).get("name", "")
-			var st: String = (
-				{
-					"assault": "clearing",
-					"hold": "holding",
-					"hunt": "patrolling",
-					"wait": "on the phase line",
-					"withdraw": "withdrawing",
-					"support": "waiting on the next room",
-					"lost": "lost"
-				}
-				. get(el["mode"], el["mode"])
-			)
+			var modes := {
+				"assault": "clearing",
+				"hold": "holding",
+				"hunt": "patrolling",
+				"wait": "on the phase line",
+				"withdraw": "withdrawing",
+				"support": "waiting on the next room",
+				"lost": "lost"
+			}
+			var st: String = String(modes.get(el["mode"], el["mode"]))
 			if el.get("consolidating", false):
 				st = "consolidating"
 			bb += (
@@ -2796,12 +2707,6 @@ func show_debrief(res: Dictionary, w, dept_lines: Array) -> void:
 	_title("%s  ·  %d" % [res["label"], int(res["score"])], 20)
 	var goal: String = res["goal"]
 	_text(box, goal.substr(0, 1).to_upper() + goal.substr(1) + ".", INK, 13)
-	_text(
-		box,
-		"Score: success 100, partial 65, failure (an abort included) 30; every death costs 15 and every officer down 5. Force is not in the score: it is what the city remembers (City Hall).",
-		GREY,
-		10
-	)
 	_text(box, "SCORE ARITHMETIC  ·  " + String(res.get("score_explanation", "")), INK, 11)
 	for part in res.get("score_parts", []):
 		var amount := int(part.get("amount", 0))

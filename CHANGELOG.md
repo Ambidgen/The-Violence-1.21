@@ -2,6 +2,39 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## v1.2.1 — Godot 4.7 compatibility
+
+The project now parses and runs on **Godot 4.7.2** as well as 4.4.1. Four faults
+were found, all of them in `main` rather than in the engine: three were damage
+from a bad merge, one was a construct the newer parser rejects.
+
+- **`scripts/ui/ops_ui.gd` was unparseable.** The merge that brought the story
+  and archive work together duplicated four member declarations (`_sliding`,
+  `kit_open`, `roster_open`, `flash`) and then spliced a function's statements
+  into class scope, between two copies of `const STATUS_WORDS`. Every merge
+  conflict was re-resolved by hand: the reformatted side plus the newer
+  features (IA triage filters, the first-operation guide, the risk card, the
+  pacing readout), with the leftover compact copies removed.
+- **`scripts/sim/world.gd` lost an indented block.** In `_update_dormancy()`
+  the body of `if not o.hot:` sat at the same level as the `if`, so the
+  proximity scan that decides an operator is hot was outside the branch and the
+  file would not parse. Restored the nesting.
+- **Two `:=` inferences from untyped values**, which 4.7 reports as parse
+  errors: `d.pool_points()` in `scripts/view/decals.gd` (`d` is untyped, so the
+  result has no static type) and the precinct comparison in
+  `scripts/city/director.gd`. Both now declare their type explicitly.
+- **`d . cases . filter(...)` chains** written across lines by the reformatter
+  are rejected by 4.7's parser; both sites are plain single expressions again.
+- **`tests/op_test.gd`**: `Outcome.evaluate()` returns `findings` as a count,
+  not an array, so the totals line now adds the int. The test had never run,
+  because `world.gd` could not parse. `tests/improvements_test.gd` expected two
+  grave cases where its own fixture has three.
+- Verified with a 4.7.2-stable build from source: all 117 scripts `--check-only`
+  clean, the game boots headless without script errors, and the test suite
+  passes (`determinism`, `ops_ui`, `dept`, `improvements`, `city_link`,
+  `city_improvements`, `op`, `habits`, `equip`, `politics`, `brains`, `civ`,
+  `lethality`, `hold`, `nav_door`, `fuzz`).
+
 ## v1.2.1 — the Windows build
 
 A single-file Windows release, built from source in an environment with no access

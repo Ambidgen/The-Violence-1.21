@@ -805,8 +805,8 @@ func _update_dormancy() -> void:
 			var was: bool = o.hot
 			o.hot = t - o.last_stress_t < 6.0 or t - o.last_enemy_seen_t < 6.0
 			if not o.hot:
-			for e in _near_fast(o.pos, 55.0, true):
-				if potential(o, e):
+				for e in _near_fast(o.pos, 55.0, true):
+					if potential(o, e):
 						o.hot = true
 						break
 			if was and not o.hot:
