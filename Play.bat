@@ -35,6 +35,10 @@ if exist "%~dp0build\TheViolence.exe" (
   "%~dp0build\TheViolence.exe" %*
   goto :done
 )
+if exist "%~dp0release\TheViolence.exe" (
+  "%~dp0release\TheViolence.exe" %*
+  goto :done
+)
 
 echo Could not play The Violence from this folder.
 echo.

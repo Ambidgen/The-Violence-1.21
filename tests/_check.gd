@@ -1,7 +1,7 @@
 extends SceneTree
 ## Compile check: loads every script so parse errors surface.
 func _init() -> void:
-	var dirs := ["res://scripts/sim", "res://scripts/data", "res://scripts/maps", "res://scripts/view", "res://scripts/ui", "res://scripts", "res://scripts/city"]
+	var dirs := ["res://scripts/sim", "res://scripts/data", "res://scripts/maps", "res://scripts/view", "res://scripts/ui", "res://scripts", "res://scripts/city", "res://scripts/campaign"]
 	for d in dirs:
 		var da := DirAccess.open(d)
 		if da == null:

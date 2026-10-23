@@ -27,7 +27,7 @@ const Squads = preload("res://scripts/data/squads.gd")
 const Names = preload("res://scripts/data/names.gd")
 const Courses = preload("res://scripts/data/courses.gd")
 
-const VERSION := 5        # 3: v0.7.5, every officer has a kit; 4: v0.8, pair bonds; 5: v0.8.5, budget, training, cases
+const VERSION := 6        # 4: v0.8, pair bonds; 5: v0.8.5, budget/training/cases; 6: applicant pool and course clocks
 const SAVE_PATH := "user://department.json"
 ## Experience points needed for tiers 1-5 (Green, Blooded, Seasoned, Veteran, Exceptional).
 const XP_TIERS := [0, 6, 18, 40, 80]
@@ -609,6 +609,60 @@ const EVIDENCE_ORDER := ["video", "witness", "radio log", "heard", "none"]
 const CASE_WEEKS := 3           # open cases close themselves, without action, after this long
 
 
+## Triage changes the order in which the chief sees cases, never their evidence or
+## the available individual decisions. Severity is primary; evidence breaks ties.
+static func case_is_urgent(c: Dictionary, at_week: int) -> bool:
+	return at_week - int(c.get("week", at_week)) >= CASE_WEEKS - 1
+
+
+static func sorted_open_cases(case_list: Array, at_week: int) -> Array:
+	var out: Array = case_list.filter(func(c): return c.get("status", "open") == "open")
+	out.sort_custom(func(a, b):
+		var sa := CASE_ORDER.find(a.get("kind", ""))
+		var sb := CASE_ORDER.find(b.get("kind", ""))
+		if sa != sb:
+			return (sa if sa >= 0 else 99) < (sb if sb >= 0 else 99)
+		var ea := EVIDENCE_ORDER.find(a.get("strength", "none"))
+		var eb := EVIDENCE_ORDER.find(b.get("strength", "none"))
+		if ea != eb:
+			return (ea if ea >= 0 else 99) < (eb if eb >= 0 else 99)
+		var ua := case_is_urgent(a, at_week)
+		var ub := case_is_urgent(b, at_week)
+		if ua != ub:
+			return ua
+		if int(a.get("week", 0)) != int(b.get("week", 0)):
+			return int(a.get("week", 0)) < int(b.get("week", 0))
+		return String(a.get("id", "")) < String(b.get("id", "")))
+	return out
+
+
+static func case_triage(case_list: Array, at_week: int) -> Dictionary:
+	var open: Array = case_list.filter(func(c): return c.get("status", "open") == "open")
+	var grave := 0
+	var video := 0
+	var urgent := 0
+	var untested := 0
+	for c in open:
+		var severity := CASE_ORDER.find(c.get("kind", ""))
+		if severity >= 0 and severity <= 1:
+			grave += 1
+		if c.get("strength", "none") == "video":
+			video += 1
+		if case_is_urgent(c, at_week):
+			urgent += 1
+		if c.get("statement", "") == "untested":
+			untested += 1
+	return {"open": open.size(), "grave": grave, "video": video, "urgent": urgent, "untested": untested}
+
+
+static func triage_line(case_list: Array, at_week: int) -> String:
+	var t := case_triage(case_list, at_week)
+	if int(t["open"]) == 0:
+		return ""
+	return "IA triage: %d open · %d grave · %d video · %d due before lapse · %d untested statements." % [
+		t["open"], t["grave"], t["video"], t["urgent"], t["untested"]]
+
+
 ## Q3: the officer's own account of it. Where there is evidence to check it against
 ## (video or witnesses), a low-integrity officer's statement can simply not match;
 ## at 65 integrity and above it always does. With nothing to check against, the
@@ -932,13 +986,15 @@ func next_week() -> Array:
 		match r["status"]:
 			"injured":
 				if due:
-					r["status"] = "active"
-					r["file"].append({"week": week, "text": "Back on duty."})
-					lines.append("%s %s is back on duty." % [r["rank"], r["name"]])
+					var studying: bool = String(r.get("course", "")) != ""
+					r["status"] = "training" if studying else "active"
+					if studying:
+						r["out_until"] = int(r["course_until"])
+					r["file"].append({"week": week, "text": "Recovered from their wound." if studying else "Back on duty."})
+					lines.append("%s %s %s." % [r["rank"], r["name"], "has recovered and continues their course" if studying else "is back on duty"])
 			"training":
 				if due:
 					r["status"] = "active"
-					lines.append(_finish_course(r))
 			"academy":
 				if due:
 					r["status"] = "active"
@@ -949,6 +1005,13 @@ func next_week() -> Array:
 					r["status"] = "active"
 					r["file"].append({"week": week, "text": "Suspension over; back on duty."})
 					lines.append("%s %s is back from suspension." % [r["rank"], r["name"]])
+		# Classroom courses have their own clock. They can finish while the wound
+		# keeps the officer in hospital, and an officer recovered mid-course stays
+		# unavailable until the course is done.
+		if String(r.get("course", "")) != "" and int(r.get("course_until", 0)) <= week:
+			lines.append(_finish_course(r))
+			if r["status"] == "training":
+				r["status"] = "active"
 		if r["status"] not in ["dead", "fired", "resigned"]:
 			r["trauma"] = maxf(0.0, float(r["trauma"]) - 0.5)
 	# Q9: queued courses start themselves as soon as the officer can take them;

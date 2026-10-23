@@ -120,7 +120,22 @@ static func evaluate(sit: Dictionary, w) -> Dictionary:
 		goal = "aborted: " + goal
 	var deaths: int = int(s.get("officers_killed", 0)) + int(s.get("civ_killed", 0))
 	var downs: int = int(s.get("officers_down", 0)) - int(s.get("officers_killed", 0))
-	var score: int = maxi(0, int(BASE[kind]) - 15 * deaths - 5 * downs)
+	var base_score := int(BASE[kind])
+	var death_penalty := 15 * deaths
+	var down_penalty := 5 * downs
+	var raw_score := base_score - death_penalty - down_penalty
+	var score: int = maxi(0, raw_score)
+	var score_parts: Array = [
+		{"label": "Goal base (%s)" % LABELS[kind].to_lower(), "amount": base_score},
+		{"label": "Deaths (%d × -15)" % deaths, "amount": -death_penalty},
+		{"label": "Nonfatal officer downs (%d × -5)" % downs, "amount": -down_penalty},
+	]
+	if raw_score < 0:
+		score_parts.append({"label": "Minimum score floor", "amount": -raw_score})
+	score_parts.append({"label": "TOTAL", "amount": score, "total": true})
+	var equation := "%d - %d - %d = %d" % [base_score, death_penalty, down_penalty, raw_score]
+	if raw_score < 0:
+		equation += " → 0 (minimum)"
 	var squads: Array = []
 	if w.teams.size() > 0:
 		for el in w.teams[0]["elements"]:
@@ -143,6 +158,8 @@ static func evaluate(sit: Dictionary, w) -> Dictionary:
 	if w.get("stood_down") == true and goal.find("still") >= 0:
 		goal += " (never found; the squads stood down)"
 	return {"kind": kind, "label": label, "goal": goal, "score": score,
+		"score_base": base_score, "score_death_penalty": death_penalty, "score_down_penalty": down_penalty,
+		"score_raw": raw_score, "score_parts": score_parts, "score_explanation": equation,
 		"deaths": deaths, "officers_killed": int(s.get("officers_killed", 0)), "civ_killed": int(s.get("civ_killed", 0)),
 		"escaped": escaped, "aborted": w.aborted, "t": w.t, "squads": squads, "findings": int(s.get("findings", 0)),
 		"orders_broken": w.broken.size()}

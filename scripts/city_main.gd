@@ -449,6 +449,12 @@ func _notification(what: int) -> void:
 		_save_pressure()
 
 
+func _exit_tree() -> void:
+	if world != null:
+		world.dispose()
+		world = null
+
+
 # ------------------------------------------------------------------ input
 func _unhandled_input(event: InputEvent) -> void:
 	if not ready_to_run:

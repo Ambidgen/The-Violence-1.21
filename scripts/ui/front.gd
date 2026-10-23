@@ -8,8 +8,9 @@ const UI = preload("res://scripts/ui/ui.gd")
 const Ink = preload("res://scripts/view/ink.gd")
 const Settings = preload("res://scripts/ui/settings.gd")
 const Campaign = preload("res://scripts/campaign/campaign.gd")
+const Version = preload("res://scripts/version.gd")
 
-const VERSION := "1.2.0"
+const VERSION := Version.VALUE
 
 var main
 var shade: ColorRect
@@ -259,7 +260,8 @@ func show_settings(from: String) -> void:
 	_check(v, "Red ink (F2): off is the monochrome proof", "red_ink")
 	_check(v, "Gore (F3): off keeps the evidence markers", "gore")
 	_check(v, "Tips in the first weeks of a campaign", "tips")
-	_check(v, "The opening cutscenes before a new campaign", "intro")
+	_check(v, "The opening cutscenes and rare campaign shorts", "intro")
+	_check(v, "Contact-aware fast-forward: slow for contact, injuries and radio", "adaptive_speed")
 	_check(v, "Veteran chief: no Suggest a plan (every plan is yours alone)", "veteran")
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
@@ -353,6 +355,7 @@ End the week when you are ready. Pay goes out, the city's allocation comes in, w
 	["Planning an operation", """Brief and Plan has three tabs.
 
 [Briefing] separates confirmed facts from estimates and shows the source and confidence of each tip. Canvassing brings two more tips; the officer is gone for the week.
+Briefing: what is known, what is estimated and how sure, and the tips. It is never complete. The readiness range compares the assigned force with that public intelligence; it is not a win probability. Canvassing sends an officer for two more tips and costs you that officer for the week.
 
 [Force] assigns up to thirty officers to five squads. Kit comes from the budget. Some equipment requires tactical training.
 
@@ -369,6 +372,10 @@ Space pauses the operation. Keys 1–7 set speed. The slider replays what you ha
 	["Afterwards", """The debrief gives the result, each squad's work, the timeline, every officer and every finding. Findings list their evidence: body camera, phone video, witness or no source.
 
 A finding tied to an officer opens an Internal Affairs case. The officer gives a statement. A squadmate may give testimony. Either can agree with the evidence or contradict it; video does not change. You can clear the case, order a use-of-force review, suspend the officer or dismiss them. The union watches discipline. The coalition and the district attorney watch what you clear.
+Space pauses. 1-7 set the speed. Optional contact-aware fast-forward briefly returns to 1x for contact, casualties and important radio, then resumes after quiet; it never changes the simulation. The slider rewinds what you have seen; the operation itself never goes back. Abort withdraws every squad: a failure, but a failure with everyone alive always scores better than one with deaths."""],
+	["Afterwards", """The debrief shows the score arithmetic and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody. Click a timeline event to seek the replay to that moment.
+
+Findings that name an officer open an internal affairs case. Cases are sorted by severity and evidence, with weekly triage and filters; each case still gets its own decision. The officer gives a statement — and what they say may or may not match the bodycam. Integrity is the stat that decides, and being caught disagreeing with the tape costs more of it. The highest-integrity squadmate still standing gives testimony, which can firm up thin evidence or shake it, though video never slips. All of it is written on the case. The same stat prices the leak: clearing a case over video leaks about half the time, more when the named officer's integrity is low or their statement was already caught out, and the district attorney reads those worst of all. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
 
 A report can reach the papers next week, months later or not at all. A lawsuit is different: it can settle against the department's account weeks after the operation."""],
 	["The department", """Open an officer's file to see their record, assign training or dismiss them. Each week brings two to four applicants. You can inspect their judgment, temper, integrity, habits and pay before you hire one. The others leave. Recruits spend two weeks at the academy; lateral hires report at once.

@@ -1,4 +1,10 @@
 .godot/
 *.tmp
 build/
+.build/
 __pycache__/
+
+# Release binaries are built by tools/build_windows_exe.sh and published as
+# GitHub Release assets: GitHub refuses to push files over 100 MB.
+release/*
+!release/README.md

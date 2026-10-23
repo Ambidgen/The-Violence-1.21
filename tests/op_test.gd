@@ -61,7 +61,7 @@ func _init() -> void:
 			var plan: Dictionary = Autoplan.suggest(s, av, lv, false, Autoplan.share(c.board, s["id"], av.size()))
 			c.dept.settle_kits()
 			if manual:
-				plan = _manual_edits(s, plan, c.dept.roster, lv)
+				plan = _manual_edits(s, plan, c.dept.officers, lv)
 			s["plan"] = plan
 			if c.plan_members(s).is_empty():
 				# the game will not run a plan with nobody in it: the situation goes unattended
@@ -112,7 +112,8 @@ func _init() -> void:
 				c.decide_case(cs, pol)
 		if args.has("hire"):
 			while c.dept.available().size() + c.dept.officers.filter(func(r): return r["status"] == "academy").size() < 16 and c.dept.balance > (3000 if sensible else 8000):
-				if c.dept.recruit(false).is_empty():
+				var pool: Array = c.dept.applicants_now()
+				if pool.is_empty() or c.dept.choose_applicant(pool[0]).is_empty():
 					break
 		var p = c.politics
 		print("  week %d: account $%d, morale %d, %d open cases, %d fit  |  trust %.0f  allies %s  polls K %.0f O %.0f P %.0f  pending %d" % [c.dept.week, c.dept.balance, c.dept.morale,
@@ -149,13 +150,13 @@ func _init() -> void:
 	var actives := 0
 	var with_bad := 0
 	var courses := 0
-	for r in c.dept.roster:
+	for r in c.dept.officers:
 		if r["status"] in ["active", "training", "injured", "suspended"]:
 			actives += 1
 			if not (r["bad_traits"] as Array).is_empty():
 				with_bad += 1
-		for ln in r["record"]:
-			if String(ln).begins_with("Completed"):
+		for entry in r["file"]:
+			if String(entry["text"]).begins_with("Completed"):
 				courses += 1
 	print("TOTALS chief=%s train=%s: mean score %d, %d findings, deficit weeks %d; courses/officer %.2f, officers still carrying a bad habit %d/%d." % [
 		args.get("chief", "all"), args.has("train"), tot_score / maxi(1, tot_ops), tot_findings, tot_deficit,
@@ -229,10 +230,10 @@ func _manual_edits(s: Dictionary, plan: Dictionary, roster: Array, lv) -> Dictio
 ## courses/officer and residual bad habits (closing Totals).
 func _training_chief(c) -> void:
 	var d = c.dept
-	for r in d.roster:
+	for r in d.officers:
 		if d.balance < 4000 or d.frozen():
 			return
-		if r["status"] in ["dead", "retired", "resigned", "dismissed", "academy", "suspended"]:
+		if r["status"] in ["dead", "retired", "fired", "resigned", "academy", "suspended"]:
 			continue
 		if r["course"] != "":
 			continue

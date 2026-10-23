@@ -2,6 +2,29 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## v1.2.1 — the Windows build
+
+A single-file Windows release, built from source in an environment with no access
+to the engine's download archives.
+
+- **`release/TheViolence.exe`** — 107 MiB, x86-64, GUI subsystem: Godot 4.4.1
+  runtime + the whole game pack (498 files, 42.8 MiB: 124 textures, 34 sounds,
+  18 cutscene videos, 76 compiled scripts) in one executable. No installer, no
+  DLLs, no side-car `.pck`; every imported library is a stock Windows DLL.
+- **Branding is compiled into the template**, not patched on afterwards: the
+  game's seven-size icon and a `The Violence 1.2.1.0` version block are written
+  into the Windows resource script before the engine is linked, so the build
+  does not need rcedit.
+- **`tools/build_windows_exe.sh`** rebuilds it end to end: a headless Linux
+  editor for the export step and a Windows release template cross-compiled with
+  zig's bundled clang + mingw-w64 sysroot, both from the Godot 4.4.1-stable
+  source. `tools/patch_rc.py` applies the two source edits this needs.
+- **`tools/inspect_exe.py`** and **`tools/inspect_pck.py`** audit a release
+  afterwards without Godot: PE machine/subsystem/imports/resources, and every
+  file inside the embedded pack checked against its MD5.
+- `Play.bat` and `play.sh` now also look in `release/`.
+- `project.godot` and the export preset report version 1.2.1.
+
 ## Unreleased: doors, and the path through them
 
 A pass over the two systems that meet at a doorway: the 0.25 m navigation lattice and the

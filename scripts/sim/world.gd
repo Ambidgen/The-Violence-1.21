@@ -740,11 +740,12 @@ func near(p: Vector2, r: float) -> Array:
 
 
 ## Like near(), but already filtered to the circle of radius r, into a reused array
-## (valid until the next call).
+## (valid until the next call). living_only is an opt-in broadphase optimization for
+## dormancy; its caller already discarded dead operators in the same order.
 var _nf: Array = []
 
 
-func _near_fast(p: Vector2, r: float) -> Array:
+func _near_fast(p: Vector2, r: float, living_only := false) -> Array:
 	_nf.clear()
 	var r2 := r * r
 	var x0 := clampi(int((p.x - r) / GRID), 0, _gw - 1)
@@ -756,7 +757,7 @@ func _near_fast(p: Vector2, r: float) -> Array:
 			var i: int = _ghead[cy * _gw + cx]
 			while i >= 0:
 				var e = _gops[i]
-				if e.pos.distance_squared_to(p) <= r2:
+				if (not living_only or e.alive()) and e.pos.distance_squared_to(p) <= r2:
 					_nf.append(e)
 				i = _gnext[i]
 	return _nf
@@ -804,8 +805,8 @@ func _update_dormancy() -> void:
 			var was: bool = o.hot
 			o.hot = t - o.last_stress_t < 6.0 or t - o.last_enemy_seen_t < 6.0
 			if not o.hot:
-				for e in _near_fast(o.pos, 55.0):
-					if e.alive() and potential(o, e):
+			for e in _near_fast(o.pos, 55.0, true):
+				if potential(o, e):
 						o.hot = true
 						break
 			if was and not o.hot:
@@ -1305,12 +1306,13 @@ func cleared_to_fire(o, e) -> bool:
 
 ## Less-lethal-first order: may this officer not shoot e yet? Inside LESS_FIRST_R the
 ## order covers a recognized suspect who is neither firing nor pointing a weapon, so the
-## officer challenges and reaches for OC, a taser or a baton instead. A man attacking, a
-## weapon shown, a civilian (the misjudge path) or anyone beyond the range is untouched.
+## officer challenges and reaches for OC, a taser or a baton instead. A man attacking
+## (aiming or firing), a civilian (the misjudge path) or anyone beyond the range is
+## untouched. A slung long gun is visible, but is not by itself an attack.
 func less_first_blocked(o, e) -> bool:
 	if not o.less_first or not o.judges or not e.alive() or e.civ or e.complying:
 		return false
-	if attacking(e, o) or e.shows_weapon():
+	if attacking(e, o):
 		return false
 	return o.pos.distance_to(e.pos) <= LESS_FIRST_R
 
@@ -1938,7 +1940,13 @@ func _less_lethal(o, e) -> void:
 	if int(o.ticker.get("chal_n_" + e.id, 0)) < less_challenges_needed(o) or e.stunned(t):
 		return
 	var j: Dictionary = o.judged.get(e.id, {})
-	if j.get("v", "") != "unknown" or e.shows_weapon():
+	# The standing tool rule needs an unarmed/unknown person. Less-lethal first
+	# also covers a recognized suspect with a slung weapon inside its short radius;
+	# aiming or firing makes less_first_blocked false and restores the usual rule.
+	if less_first_blocked(o, e):
+		if j.get("v", "") not in ["unknown", "threat"]:
+			return
+	elif j.get("v", "") != "unknown" or e.shows_weapon():
 		return
 	var tool := less_tool(o, e, o.pos.distance_to(e.pos))
 	if tool == "":
@@ -2884,6 +2892,8 @@ func _down(a, shooter, killed: bool, where: String) -> void:
 	shooter.kills += 1
 	say("%s %s (%s, by %s)" % [a.id, "KILLED" if killed else "DOWN", where, shooter.id], "kill")
 	emit({"type": "down", "id": a.id, "killed": killed, "p": a.pos})
+	if recorder != null:
+		mark("%s %s (%s, by %s)" % [a.id, "killed" if killed else "down", where, shooter.id], "casualty")
 	if killed:
 		_record_death(a, "killed")
 	if incident != null:
