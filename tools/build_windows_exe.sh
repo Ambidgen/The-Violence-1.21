@@ -118,6 +118,11 @@ done
 ln -sf x86_64-w64-mingw32-gcc "$PREFIX/bin/gcc"
 ln -sf x86_64-w64-mingw32-g++ "$PREFIX/bin/g++"
 ln -sf x86_64-w64-mingw32-ar "$PREFIX/bin/ar"
+# 4.4.1's detect.py probes gcc-ar first for a MinGW archiver; without the name it
+# stores the string "None" and the final static-library link fails with
+# `sh: 1: None: not found`.
+ln -sf x86_64-w64-mingw32-ar "$PREFIX/bin/x86_64-w64-mingw32-gcc-ar"
+ln -sf x86_64-w64-mingw32-ar "$PREFIX/bin/gcc-ar"
 ln -sf x86_64-w64-mingw32-windres "$PREFIX/bin/windres"
 # zig's `ar` already writes an index; Godot only needs the touch to succeed.
 printf '#!/bin/sh\nexit 0\n' > "$PREFIX/bin/x86_64-w64-mingw32-ranlib"
