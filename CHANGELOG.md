@@ -35,6 +35,26 @@ from a bad merge, one was a construct the newer parser rejects.
   `city_improvements`, `op`, `habits`, `equip`, `politics`, `brains`, `civ`,
   `lethality`, `hold`, `nav_door`, `fuzz`).
 
+The same sources also build and boot on 4.4.1-stable from source, so the
+version bump costs nothing on the engine the release uses.
+
+### The release exe, rebuilt
+
+The 107 MiB `release/TheViolence.exe` shipped by #9 embedded *unparseable*
+scripts — it could not have started. It is rebuilt from these sources:
+112,611,488 bytes, Godot 4.4.1, 508 files / 42.8 MiB of pack, every file
+matching its stored MD5, `The Violence` + `1.2.1.0` in the version resource.
+Two faults in `tools/build_windows_exe.sh` came out of that rebuild:
+
+- It never created `x86_64-w64-mingw32-gcc-ar`, which 4.4.1's `detect.py`
+  probes first; `env.Detect()` returned `None`, the engine stringified it, and
+  the final static-library link died with `sh: 1: None: not found`.
+- A source build reports `4.4.1.stable.custom_build`, but the editor looks for
+  templates under `4.4.1.stable`, so the template was installed where the
+  export step would never find it.
+- `application/modify_resources` is now `false`: the icon and version block are
+  compiled into the branded template, so the export no longer demands rcedit.
+
 ## v1.2.1 — the Windows build
 
 A single-file Windows release, built from source in an environment with no access

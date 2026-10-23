@@ -160,7 +160,9 @@ ls -l "$TEMPLATE"
 
 # --------------------------------------------------------- 6. install template
 say "install template for the editor"
-VER=$("$EDITOR" --headless --version | tr -d '\r')
+# A source build reports "4.4.1.stable.custom_build", but the editor looks its
+# templates up under the plain "4.4.1.stable" directory.
+VER=$("$EDITOR" --headless --version | tr -d '\r' | sed 's/\.custom_build$//')
 TPL_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$VER
 mkdir -p "$TPL_DIR"
 cp "$TEMPLATE" "$TPL_DIR/windows_release_x86_64.exe"
