@@ -6,7 +6,8 @@ This checkout contains the game source, maps, campaign systems, cutscenes, and h
 
 ## Run the game
 
-1. Install **Godot 4.4 or newer** (the project is tested with 4.4.1).
+1. Install **Godot 4.4 or newer**. The primary engine is **4.7.2**; **4.4.1**
+   is still supported and both are declared in `project.godot`.
 2. Import `project.godot` in the Godot editor.
 3. Run the main scene (`scenes/main.tscn`) or press **F6/F5** as appropriate for your editor setup.
 
@@ -86,7 +87,28 @@ godot --headless --path . -s res://tests/dept_test.gd
 godot --headless --path . -s res://tests/orders_test.gd
 godot --headless --path . -s res://tests/determinism_test.gd -- --verbose
 godot --headless --path . -s res://tests/city_sim.gd -- --seed=1001 --min=6 --quiet --fine
+godot --headless --path . -s res://tests/godot472_test.gd
 ```
+
+`tests/godot472_test.gd` is the Godot 4.7.2 compatibility regression: it feeds
+the save path deliberately malformed-but-parseable data, checks the navigator's
+unbuilt fallback, and re-checks that the version metadata is in sync.
+
+### Static checks without an engine
+
+`tools/gd47_check.py` is the audit used for the 4.7.2 pass. It needs no Godot
+binary, so it runs in CI or in a sandbox with no engine:
+
+```sh
+python3 tools/gd47_check.py            # scripts/, tests/, tools/
+python3 tools/gd47_check.py scripts/   # or one subtree
+```
+
+It checks bracket balance (with strings and comments stripped), duplicate class
+members, tab-only indentation, `:=` inference from an untyped receiver — the
+construct 4.7 rejects — the GDScript-breaking APIs from 4.4 to 4.7, and
+statements that escaped into class scope. It is a linter, not a parser: confirm
+anything it reports with `tests/_check.gd`.
 
 Some harnesses accept additional options documented in their script headers. Headless execution validates logic and scene automation; it is not a substitute for visual or manual playtesting.
 

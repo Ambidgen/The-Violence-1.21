@@ -205,29 +205,45 @@ func from_data(d: Dictionary) -> bool:
 	var ver := int(d.get("version", 0))
 	if ver < 1 or ver > VERSION:
 		return false
-	seed_val = int(d["seed"])
+	# 4.72: as in Department.from_data, a save that parses but lost a key must not
+	# throw here — this runs before the title screen and SaveFile only falls back to
+	# the .bak when the file fails to *parse*, not when it is merely incomplete.
+	seed_val = int(d.get("seed", 1001))
 	rng.seed = seed_val * 31 + 7
 	rng.state = String(d.get("rng_state", "0")).to_int()
 	dept = Department.new()
-	if not dept.from_data(d["department"]):
+	if not dept.from_data(d.get("department", {}) if d.get("department", {}) is Dictionary else {}):
 		return false
-	board = d.get("board", [])
-	past = d.get("past", [])
-	pressure = d.get("pressure", {})   # version 2 and earlier: no city was ever read
-	short_history = d.get("short_history", {}).duplicate(true)
+	board = []
+	var raw_board: Array = d.get("board", []) if d.get("board", []) is Array else []
+	for b0 in raw_board:
+		if b0 is Dictionary:
+			board.append(b0)
+			_ints(b0)
+	past = []
+	var raw_past: Array = d.get("past", []) if d.get("past", []) is Array else []
+	for p0 in raw_past:
+		if p0 is Dictionary:
+			past.append(p0)
+			_ints(p0)
+	pressure = d.get("pressure", {}) if d.get("pressure", {}) is Dictionary else {}   # version 2 and earlier: no city was ever read
+	short_history = {}
+	if d.get("short_history", {}) is Dictionary:
+		short_history = d["short_history"].duplicate(true)
 	short_last_week = int(d.get("short_last_week", -99))
 	# version 1 (before v0.9) had no politics: the city starts from the wards' trust now
 	politics = Politics.new()
-	politics.from_data(d.get("politics", {}), seed_val)
-	for s in board:
-		_ints(s)
-	for s2 in past:
-		_ints(s2)
+	politics.from_data(d.get("politics", {}) if d.get("politics", {}) is Dictionary else {}, seed_val)
 	return true
 
 
 ## JSON keeps every number as a float: put back the ones that are integers.
+## 4.72: guarded — board/past entries come from a file, and `int(null)` silently
+## becomes 0 while `int("abc")` also becomes 0, so a junk value degrades instead
+## of throwing mid-boot.
 static func _ints(s: Dictionary) -> void:
+	if not (s is Dictionary):
+		return
 	for k in ["week", "seed", "map", "ward_i", "trust", "visibility", "crowd", "duration", "attack_t", "deadline", "tip_count"]:
 		if s.has(k):
 			s[k] = int(s[k])

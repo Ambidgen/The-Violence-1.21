@@ -526,9 +526,13 @@ func carry_time(o) -> float:
 
 
 func _green_carry(o) -> float:
+	# 4.72: guard against missing weapon data (e.g., sidearm_only with no wpn entry)
+	var w = o.wpn()
+	if w == null or not w.has("draw"):
+		return 0.9 if o.active == "pistol" else 0.45
 	if o.active == "pistol":
-		return 0.9 * (1.3 if o.echelon == "untrained" else 1.0) * float(o.wpn().get("draw", 1.0))
-	return 0.45 * float(o.wpn().get("draw", 1.0))
+		return 0.9 * (1.3 if o.echelon == "untrained" else 1.0) * float(w.get("draw", 1.0))
+	return 0.45 * float(w.get("draw", 1.0))
 
 
 func emit(ev: Dictionary) -> void:
@@ -2296,7 +2300,11 @@ func _move2(o) -> void:
 			o.ticker["jam_t"] = 0.0
 	else:
 		o.ticker["jam_t"] = 0.0
-	o.vel = (newp - o.pos) / DT
+	# 4.72: DT is const 1/30 but guard division for future tick changes
+	if DT > 0.0001:
+		o.vel = (newp - o.pos) / DT
+	else:
+		o.vel = Vector2.ZERO
 	o.pos = newp
 	o.room = level.room_at(o.pos)
 	if o.wounds > 0 or o.arm_hit or o.leg_hit:
@@ -3042,12 +3050,17 @@ func _integrate2(o) -> void:
 
 
 func _passive(o) -> void:
+	# 4.72: tr must be >0 or exp() divides by zero; fallback to safe default
 	if o.recoil > 0.01:
-		o.recoil *= exp(-DT / o.ech["tr"])
+		var tr: float = float(o.ech.get("tr", 0.25))
+		if tr > 0.001:
+			o.recoil *= exp(-DT / tr)
+		else:
+			o.recoil *= 0.92
 	if o.dormant and o.stress <= 0.0:
 		return
 	if not o.alive():
-		if o.state == "down" and not o.carried and not o.ticker.get("treated", false) and t - o.ticker.get("down_t", t) >= BLEED_OUT:
+		if o.state == "down" and not o.carried and not o.ticker.get("treated", false) and t - float(o.ticker.get("down_t", t)) >= BLEED_OUT:
 			o.state = "dead"
 			say("%s dies of wounds" % o.id, "kill")
 			emit({"type": "bled_out", "id": o.id, "p": o.pos})

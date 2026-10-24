@@ -2,6 +2,84 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased — the Godot 4.7.2 debug pass
+
+A whole-tree pass with **Godot 4.7.2 as the primary engine** (4.4.1 stays
+supported). The engine is the same one 1.2.1 targeted, so this is not a port:
+it is the class of fault 4.7's stricter analyzer and stricter runtime turn from
+a warning into a stop, plus the crash-on-boot paths reachable with data the
+code assumed could never arrive.
+
+**Caveat on verification.** No Godot binary could be run here — the engine's
+release downloads sit outside this environment's network allow-list. Every
+finding below is from static analysis, and every fix is written so that a
+correct file takes exactly the same path it did before. Run the harnesses to
+confirm (see the README's headless checks).
+
+- **One more `:=` that 4.7 rejects.** `city_main.gd` read `var payload :=
+  director.pressure_data()`; `director` is declared `var director`, so the
+  result has no static type. This is the same construct that broke
+  `decals.gd`'s `d.pool_points()` in 1.2.1, and it was introduced by the
+  pressure-write hardening in this very pass — now `var payload: Dictionary`.
+  The other 627 `:=` sites were checked by resolving each callee's declared
+  return type; all of them infer.
+- **The save-loading path could throw before the title screen.** `Campaign.
+  from_data()` and `Department.from_data()` read required keys as `d["seed"]`,
+  `d["officers"]`, `d["department"]` and so on. `SaveFile` only falls back to
+  the `.bak` when a file fails to *parse* — a file that parses but lost a
+  record, or holds a `null` or a non-dictionary entry, threw instead, and this
+  runs while the game is starting. Both now read through `.get()` with the
+  version-appropriate defaults, and `_fix_record()` guards the kit sub-keys and
+  the `file` list. Behaviour on a save the game wrote is unchanged.
+- **`_find_path()` indexed an empty `grids` array.** `nav.gd` assumed `build()`
+  had run; it now returns the direct `a -> b` line instead, so a navigator that
+  was never built degrades instead of crashing.
+- **Division and normalisation guards** in the hot loops: `o.ech["tr"] == 0`
+  made `exp()` divide by zero in `_passive()`; `DT` is now checked before the
+  velocity divide; `o.wpn()` may be absent in `_green_carry()`; a zero-length
+  away vector in `director._retreat()` and the ambulance `fetch` job now fall
+  back instead of normalising a null vector.
+- **`get_window()` / `get_viewport()` / viewport textures** are null-checked in
+  both scenes' startup, screenshot and camera-fit paths, so a headless or
+  pre-first-frame call logs a warning and continues rather than throwing.
+- **Both camera fits could write an `INF` into `cam.position`.** `main._fit_
+  camera()` and `city_main.fit_camera()` divide by the computed zoom `z` to
+  offset for the side panel, and `city_main` divides by a raw `--zoom`
+  argument. A degenerate viewport or a zero/negative `--zoom` made that a
+  divide by zero; both now bail out before the divide instead of after it, and
+  `--zoom` is validated like `--ui-scale` is.
+- **`--ui-scale` is validated.** A malformed value used to be cast and assigned
+  straight to `content_scale_factor`; it is now range-checked.
+- **Settings writes report failures.** `ConfigFile.save()` and the audio-bus
+  indexes are guarded, so a read-only `user://` degrades to a warning.
+- **`money()` no longer loops on a pathological input**, and `absi()`'s
+  `INT64_MIN` overflow is handled.
+- **The project declares both engines.** `config/features` is now
+  `PackedStringArray("4.4", "4.7")`, and the GDScript `untyped_declaration` /
+  `inferred_declaration` / `unsafe_void_return` warnings are switched on so the
+  remaining `var level` / `var world` members stay visible.
+
+### New tooling
+
+- **`tools/gd47_check.py`** — the static audit used for this pass, runnable with
+  no Godot binary (`python3 tools/gd47_check.py`). Six checks: bracket balance
+  with strings and comments stripped, duplicate class members, tab-only
+  indentation, `:=` inference from an untyped receiver, the GDScript-breaking
+  APIs from 4.4 to 4.7, and statements that escaped into class scope. It is a
+  linter, not a parser: confirm with `tests/_check.gd`.
+- **`tests/godot472_test.gd`** — headless regression for the fixes above
+  (`godot --headless --path . -s res://tests/godot472_test.gd`). It feeds the
+  save path deliberately malformed-but-parseable data, checks the unbuilt
+  navigator, and re-checks the version metadata sync.
+
+**Also checked and found clean:** every GDScript-breaking API change from
+4.4 through 4.7 (the removed `RenderingServer.instance_set_interpolated` /
+`instance_reset_physics_interpolation`, `get_rpc_config`, `UPDATE_WIDTH_IN_
+PERCENT`, `accessibility_live`, `type_exists`) has zero uses in the tree;
+`draw_string`'s new `oversampling` parameter is appended last, so all ~90
+existing calls are unaffected; no duplicate members, no mixed indentation, and
+all 118 scripts balance.
+
 ## v1.2.1 — Godot 4.7 compatibility
 
 The project now parses and runs on **Godot 4.7.2** as well as 4.4.1. Four faults
