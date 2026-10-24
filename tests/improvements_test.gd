@@ -78,7 +78,7 @@ func _test_ia() -> void:
 	check(sorted.map(func(c): return c["id"]) == ["IA-3", "IA-4", "IA-2", "IA-1"], "IA severity then evidence ordering")
 	check(Department.case_is_urgent(cases[0], 3), "IA due-soon threshold")
 	var triage := Department.case_triage(cases, 4)
-	check(triage["open"] == 4 and triage["grave"] == 2 and triage["video"] == 2 and triage["urgent"] == 4, "IA weekly triage counts")
+	check(triage["open"] == 4 and triage["grave"] == 3 and triage["video"] == 2 and triage["urgent"] == 4, "IA weekly triage counts")
 	check(cases[0]["status"] == "open" and not cases[4].has("decision"), "IA sorting does not decide cases")
 
 

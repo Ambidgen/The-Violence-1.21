@@ -287,8 +287,8 @@ class Stains extends Node2D:
 		var r: float = float(pl["full"]) * k * PX
 		var sh: PackedFloat32Array = pl["shape"]
 		var rot: float = pl["rot"]
-		var outer := d.pool_points(c, r, rot, sh, 1.0)
-		var inner := d.pool_points(c, r, rot, sh, 0.58)
+		var outer: PackedVector2Array = d.pool_points(c, r, rot, sh, 1.0)
+		var inner: PackedVector2Array = d.pool_points(c, r, rot, sh, 0.58)
 		draw_colored_polygon(outer, Ink.accent(0.68))
 		draw_colored_polygon(inner, Ink.accent(0.90))
 		for j in 3:

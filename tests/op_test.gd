@@ -81,7 +81,7 @@ func _init() -> void:
 			runs_left -= 1
 			var res: Dictionary = Outcome.evaluate(s, w)
 			tot_score += int(res.get("score", 0))
-			tot_findings += (res.get("findings", []) as Array).size()
+			tot_findings += int(res.get("findings", 0))
 			var lines: Array = c.dept.apply_result(w, lv.map_name)
 			lines.append_array(c.after_operation(s["id"], res, w))
 			c.record(s["id"], res)
