@@ -229,12 +229,18 @@ static func contact_status(campaign, contact_id: String) -> String:
 	if campaign == null:
 		return "No campaign file."
 	var politics = campaign.politics
-	if contact_id in ["kettering", "dana", "pell"]:
+	# The archive's contact ids are not the politics layer's candidate ids: Dana
+	# Okonjo-Vale is "dana" in the story and "okonjo" in the polls. Passing the
+	# contact id straight to politics.share() read a key that is not there, which
+	# logged an engine error and printed a 0.0% share for her.
+	var cand_ids := {"kettering": "kettering", "dana": "okonjo", "pell": "pell"}
+	if contact_id in cand_ids:
 		if campaign.over():
 			var winner := String(politics.result.get("winner", ""))
 			return "Election result: %s won." % _winner_name(winner)
-		var lead := "leading" if politics.leader() == contact_id else "in the field"
-		return "Poll share %.1f%% · %s." % [politics.share(contact_id), lead]
+		var cand: String = cand_ids[contact_id]
+		var lead := "leading" if politics.leader() == cand else "in the field"
+		return "Poll share %.1f%% · %s." % [politics.share(cand), lead]
 	var ally_ids := {
 		"duff": "council",
 		"rourke": "union",

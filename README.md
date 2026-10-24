@@ -76,6 +76,22 @@ Commit `scripts/version.gd`, `project.godot`, and `export_presets.cfg` together.
 
 ## Headless checks
 
+One command runs them in tiers and keeps a log per suite:
+
+```sh
+tools/run_tests.sh --check     # load every script (seconds)
+tools/run_tests.sh --quick     # the gates a commit should pass (default)
+tools/run_tests.sh --full      # + determinism, simulation, campaign and soak suites
+tools/run_tests.sh --soak      # + the asserted balance matrix (long)
+GODOT=/path/to/godot tools/run_tests.sh --full
+```
+
+The runner exits non-zero if any suite fails, scans the logs of the harnesses
+that do not set an exit code, and writes `build/test-logs/<suite>.log`. The same
+tiers run in CI (`tools/ci/ci.yml` — move it to `.github/workflows/ci.yml` to
+activate it) on 4.7.2 and on 4.4.1, the engine the Windows build uses. Run the suites individually when you are debugging one
+of them; otherwise prefer the runner.
+
 Run from the repository root with a Godot executable on your PATH (or substitute its absolute path):
 
 ```sh

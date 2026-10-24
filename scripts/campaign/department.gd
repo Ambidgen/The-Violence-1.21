@@ -290,7 +290,9 @@ static func money(n: int) -> String:
 func payroll() -> int:
 	var t := 0
 	for r in officers:
-		if r["status"] in ["active", "injured", "training", "academy"]:
+		# 4.72: a loaded record may have lost `status`; an unreadable status is a
+		# paid officer (the boot-path default), not a crash.
+		if String(r.get("status", "active")) in ["active", "injured", "training", "academy"]:
 			t += Courses.pay(r)
 	return t
 
@@ -1118,7 +1120,11 @@ func _fix_record(r: Dictionary) -> Dictionary:
 	r["trauma"] = float(r.get("trauma", 0.0))
 	# version 1 (v0.5-v0.6) had no years of service, version 2 (v0.7) no kit
 	r["years"] = float(r.get("years", 0.0))
-	r["kit"] = Equipment.normalize(r.get("kit", Equipment.default_kit()))
+	# 4.72: `r.get("kit", default)` still returns null when the save *has* the key with
+	# a null value, and Equipment.normalize() cannot take null — it logged an engine
+	# error before the fallback below could run. Decide the argument first.
+	var kit_in = r.get("kit", null)
+	r["kit"] = Equipment.normalize(kit_in if kit_in is Dictionary else Equipment.default_kit())
 	# 4.72: a damaged save may carry a kit without these sub-keys. Normalising the
 	# kit should always produce them, but a half-written record can still arrive
 	# here, and this runs while the game is starting: a throw would stop the boot.
@@ -1131,6 +1137,24 @@ func _fix_record(r: Dictionary) -> Dictionary:
 	r["kit"]["plates"] = int(r["kit"]["plates"])
 	for gk in r["kit"]["gear"]:
 		r["kit"]["gear"][gk] = int(r["kit"]["gear"][gk])
+	if not (r.get("status", null) is String) or String(r.get("status", "")) == "":
+		r["status"] = "active"
+	if not (r.get("name", null) is String):
+		r["name"] = "Officer"
+	if not (r.get("rank", null) is String):
+		r["rank"] = "Officer"
+	if not (r.get("ech", null) is Dictionary):
+		r["ech"] = Habits.service_stats(float(r.get("years", 0.0)))
+	if not (r.get("good", null) is Array):
+		r["good"] = []
+	if not (r.get("bad_traits", null) is Array):
+		r["bad_traits"] = []
+	if not (r.get("traits", null) is Array):
+		r["traits"] = []
+	if not (r.get("courses", null) is Array):
+		r["courses"] = []
+	if not (r.get("queue", null) is Array):
+		r["queue"] = []
 	if not r.has("file") or not (r["file"] is Array):
 		r["file"] = []
 	for fe in r["file"]:
