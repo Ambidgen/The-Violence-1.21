@@ -270,12 +270,18 @@ func note(text: String) -> void:
 
 # ================================================================== the budget (v0.8.5)
 static func money(n: int) -> String:
+	# 4.72: absi() overflows on -2^63; clamp and handle zero early
+	if n == 0:
+		return "0"
 	var neg := n < 0
-	var s := str(absi(n))
+	# Use 64-bit safe abs: absi(n) would overflow for INT64_MIN
+	var s := str(absi(n)) if n != -9223372036854775807 - 1 else "9223372036854775808"
 	var out := ""
-	while s.length() > 3:
+	var guard := 0
+	while s.length() > 3 and guard < 10:
 		out = "," + s.substr(s.length() - 3) + out
 		s = s.substr(0, s.length() - 3)
+		guard += 1
 	return ("-" if neg else "") + s + out
 
 
@@ -1113,11 +1119,23 @@ func _fix_record(r: Dictionary) -> Dictionary:
 	# version 1 (v0.5-v0.6) had no years of service, version 2 (v0.7) no kit
 	r["years"] = float(r.get("years", 0.0))
 	r["kit"] = Equipment.normalize(r.get("kit", Equipment.default_kit()))
+	# 4.72: a damaged save may carry a kit without these sub-keys. Normalising the
+	# kit should always produce them, but a half-written record can still arrive
+	# here, and this runs while the game is starting: a throw would stop the boot.
+	if not (r["kit"] is Dictionary):
+		r["kit"] = Equipment.default_kit()
+	if not r["kit"].has("plates"):
+		r["kit"]["plates"] = 0
+	if not r["kit"].has("gear") or not (r["kit"]["gear"] is Dictionary):
+		r["kit"]["gear"] = {}
 	r["kit"]["plates"] = int(r["kit"]["plates"])
 	for gk in r["kit"]["gear"]:
 		r["kit"]["gear"][gk] = int(r["kit"]["gear"][gk])
+	if not r.has("file") or not (r["file"] is Array):
+		r["file"] = []
 	for fe in r["file"]:
-		fe["week"] = int(fe["week"])
+		if fe is Dictionary:
+			fe["week"] = int(fe.get("week", 0))
 	# version 4 and earlier (before v0.8.5): the kit they carry counts as issued
 	r["issued"] = int(r.get("issued", Equipment.cost(r["kit"])))
 	r["tactical"] = bool(r.get("tactical", false))
@@ -1134,43 +1152,55 @@ func from_data(d: Dictionary) -> bool:
 	var ver := int(d.get("version", 0))
 	if ver < 1 or ver > VERSION:
 		return false
-	seed_val = int(d["seed"])
-	week = int(d["week"])
-	serial = int(d["serial"])
-	ops_run = int(d["ops_run"])
+	# 4.72: every key below used to be read as d["..."], which throws on a save that
+	# parses as JSON but lost a record. This is the boot path and SaveFile keeps a
+	# .bak for exactly this case, so a damaged file must fail *softly* (empty
+	# department) rather than take the whole game down before the title screen.
+	seed_val = int(d.get("seed", 1))
+	week = int(d.get("week", 1))
+	serial = int(d.get("serial", 0))
+	ops_run = int(d.get("ops_run", 0))
 	bodycams = bool(d.get("bodycams", false))
 	rng.seed = seed_val
-	rng.state = String(d["rng_state"]).to_int()
+	rng.state = String(d.get("rng_state", "0")).to_int()
 	names = Names.new(seed_val * 7 + 3 + serial)
 	officers = []
-	for r0 in d["officers"]:
-		officers.append(_fix_record(r0))
+	var raw_off: Array = d.get("officers", []) if d.get("officers", []) is Array else []
+	for r0 in raw_off:
+		if r0 is Dictionary:
+			officers.append(_fix_record(r0))
 	# version 5 and earlier had no applicant pool: this week's is rolled on demand
 	applicants = []
-	for a0 in d.get("applicants", []):
-		applicants.append(_fix_record(a0))
+	var raw_app: Array = d.get("applicants", []) if d.get("applicants", []) is Array else []
+	for a0 in raw_app:
+		if a0 is Dictionary:
+			applicants.append(_fix_record(a0))
 	applicant_week = int(d.get("applicant_week", 0))
 	# version 3 and earlier (before v0.8) had no pair bonds: everyone starts as strangers
 	bonds = {}
-	for bk in d.get("bonds", {}):
-		bonds[bk] = int(d["bonds"][bk])
-	history = d.get("history", [])
-	notes = d.get("notes", [])
+	var raw_bonds: Dictionary = d.get("bonds", {}) if d.get("bonds", {}) is Dictionary else {}
+	for bk in raw_bonds:
+		bonds[bk] = int(raw_bonds[bk])
+	history = d.get("history", []) if d.get("history", []) is Array else []
+	notes = d.get("notes", []) if d.get("notes", []) is Array else []
 	# version 4 and earlier had no budget: the city sets it from the payroll now
 	if d.has("allocation"):
-		allocation = int(d["allocation"])
-		balance = int(d["balance"])
+		allocation = int(d.get("allocation", 0))
+		balance = int(d.get("balance", Courses.RESERVE))
 		morale = int(d.get("morale", Courses.MORALE0))
 		case_serial = int(d.get("case_serial", 0))
 		deficit_weeks = int(d.get("deficit_weeks", 0))
 		morale_home = int(d.get("morale_home", Courses.MORALE0))
-		ledger = d.get("ledger", [])
+		ledger = d.get("ledger", []) if d.get("ledger", []) is Array else []
 		for le in ledger:
-			le["week"] = int(le["week"])
-			le["amount"] = int(le["amount"])
-		cases = d.get("cases", [])
+			if le is Dictionary:
+				le["week"] = int(le.get("week", 0))
+				le["amount"] = int(le.get("amount", 0))
+		cases = d.get("cases", []) if d.get("cases", []) is Array else []
 		for c in cases:
-			c["week"] = int(c["week"])
+			if not (c is Dictionary):
+				continue
+			c["week"] = int(c.get("week", 0))
 			for ck in ["integrity", "findings"]:
 				if c.has(ck):
 					c[ck] = int(c[ck])
@@ -1181,7 +1211,8 @@ func from_data(d: Dictionary) -> bool:
 		ledger = []
 		cases = []
 	for n in notes:
-		n["week"] = int(n["week"])
+		if n is Dictionary:
+			n["week"] = int(n.get("week", 0))
 	return true
 
 

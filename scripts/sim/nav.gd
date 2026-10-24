@@ -365,6 +365,9 @@ func find_path(prof: int, a: Vector2, b: Vector2, avoid := "") -> PackedVector2A
 
 
 func _find_path(prof: int, a: Vector2, b: Vector2, grid: AStarGrid2D = null) -> PackedVector2Array:
+	# 4.72: grids may be empty if build() failed or map missing; fall back to direct line
+	if grids.is_empty():
+		return PackedVector2Array([a, b])
 	var g: AStarGrid2D = grid if grid != null else grids[clampi(prof, 0, 3)]
 	var ca := nearest_free(a)
 	var cb := nearest_free(b)

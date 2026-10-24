@@ -125,10 +125,19 @@ var _paused_before_menu := false
 
 
 func _ready() -> void:
+	# Godot 4.7.2: content_scale_factor is clamped to >0; guard against malformed args
 	for a0 in OS.get_cmdline_user_args():
-		if a0.begins_with("--ui-scale="):      # recordings (1.1): everything drawn larger
-			get_tree().root.content_scale_factor = float(a0.substr(11))
-	get_window().title = "The Violence"
+		if a0.begins_with("--ui-scale="):
+			var raw := a0.substr(11)
+			if raw.is_valid_float():
+				var sc := float(raw)
+				if sc > 0.1 and sc < 10.0:
+					get_tree().root.content_scale_factor = sc
+				else:
+					push_warning("Ignored --ui-scale=%s (expected 0.1..10)" % raw)
+	var win := get_window()
+	if win != null:
+		win.title = "The Violence"
 	Settings.load_all()
 	Settings.apply()
 	RenderingServer.set_default_clear_color(Color("#d4d4cf"))
@@ -1587,16 +1596,46 @@ func _test_hooks() -> void:
 
 
 func _shot(path: String) -> void:
-	var img := get_viewport().get_texture().get_image()
-	img.save_png(path)
+	# 4.72: viewport texture may be null during early frames or headless
+	var vp := get_viewport()
+	if vp == null:
+		push_warning("_shot: no viewport for %s" % path)
+		return
+	var tex = vp.get_texture()
+	if tex == null:
+		push_warning("_shot: no viewport texture for %s" % path)
+		return
+	var img := tex.get_image()
+	if img == null or img.is_empty():
+		push_warning("_shot: empty image for %s" % path)
+		return
+	var dir := path.get_base_dir()
+	if dir != "" and dir != "." and not DirAccess.dir_exists_absolute(dir):
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir) if dir.begins_with("user://") else dir)
+	var err := img.save_png(path)
+	if err != OK:
+		push_warning("_shot: save_png(%s) -> %d" % [path, err])
 
 
 # ------------------------------------------------------------------ camera and input
 func _fit_camera() -> void:
-	var vs := get_viewport().get_visible_rect().size
+	var vp := get_viewport()
+	if vp == null:
+		return
+	var vs := vp.get_visible_rect().size
+	if vs.x < 1.0 or vs.y < 1.0:
+		return
+	if level == null:
+		return
 	var avail := Vector2(vs.x - UI.PANEL_W, vs.y)
 	var map_px := Vector2(level.W * PX + 140, level.H * PX + 316)
+	if map_px.x < 1.0 or map_px.y < 1.0:
+		return
 	var z := minf(avail.x / map_px.x, avail.y / map_px.y)
+	# 4.72: bail out before the PANEL_W / z divide below, not after: a zero or
+	# non-finite z would put an INF straight into cam.position.
+	if not is_finite(z) or z < 0.005 or z > 100.0:
+		return
 	cam.zoom = Vector2(z, z)
 	var centre := Vector2(level.W * PX / 2.0, (level.H * PX + 156.0) / 2.0)
 	cam.position = centre + Vector2(UI.PANEL_W / 2.0 / z, 0)

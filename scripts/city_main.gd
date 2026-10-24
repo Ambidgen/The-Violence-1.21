@@ -90,9 +90,15 @@ class Overview extends Node2D:
 
 func _ready() -> void:
 	for a0 in OS.get_cmdline_user_args():
-		if a0.begins_with("--ui-scale="):      # recordings (1.1): everything drawn larger
-			get_tree().root.content_scale_factor = float(a0.substr(11))
-	get_window().title = "The Violence - Endless Battle"
+		if a0.begins_with("--ui-scale="):
+			var raw := a0.substr(11)
+			if raw.is_valid_float():
+				var sc := float(raw)
+				if sc > 0.1 and sc < 10.0:
+					get_tree().root.content_scale_factor = sc
+	var win := get_window()
+	if win != null:
+		win.title = "The Violence - Endless Battle"
 	RenderingServer.set_default_clear_color(Color("#d6d6d3"))
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	for a in OS.get_cmdline_user_args():
@@ -181,10 +187,14 @@ func _build() -> void:
 	ready_to_run = true
 	fit_camera()
 	if _args.has("zoom"):
+		# 4.72: a zero or junk --zoom put an INF into cam.position via the divide
 		var z := float(_args["zoom"])
-		cam.zoom = Vector2(z, z)
-		var f: PackedStringArray = _args.get("focus", "%f,%f" % [lv.W / 2.0, lv.H / 2.0]).split(",")
-		cam.position = Vector2(float(f[0]), float(f[1])) * PX + Vector2(CityUI.PANEL_W / 2.0 / z, 0)
+		if not is_finite(z) or absf(z) < 0.005:
+			push_warning("Ignored --zoom=%s (must be a finite, non-zero scale)" % _args["zoom"])
+		else:
+			cam.zoom = Vector2(z, z)
+			var f: PackedStringArray = _args.get("focus", "%f,%f" % [lv.W / 2.0, lv.H / 2.0]).split(",")
+			cam.position = Vector2(float(f[0]), float(f[1])) * PX + Vector2(CityUI.PANEL_W / 2.0 / z, 0)
 	if _args.has("select"):
 		selected = _args["select"]
 	ui.set_speed(speed)
@@ -269,9 +279,18 @@ func back_to_setup() -> void:
 
 
 func fit_camera() -> void:
-	var vs := get_viewport().get_visible_rect().size
+	var vp := get_viewport()
+	if vp == null or lv == null:
+		return
+	var vs := vp.get_visible_rect().size
+	if vs.x < 1.0 or vs.y < 1.0:
+		return
 	var avail := Vector2(vs.x - CityUI.PANEL_W, vs.y)
 	var z := minf(avail.x / (lv.W * PX + 200.0), avail.y / (lv.H * PX + 200.0))
+	# 4.72: bail before the PANEL_W / z divide, which would otherwise write an INF
+	# into cam.position on a degenerate viewport or city size.
+	if not is_finite(z) or z < 0.005 or z > 100.0:
+		return
 	cam.zoom = Vector2(z, z)
 	cam.position = Vector2(lv.W, lv.H) * PX / 2.0 + Vector2(CityUI.PANEL_W / 2.0 / z, 0)
 
@@ -417,17 +436,22 @@ func _camera_follow(delta: float) -> void:
 
 func _test_hooks() -> void:
 	if _args.has("clean"):          # recordings (1.1): no panels
-		ui.visible = false
-		ledger_layer.visible = false
+		if ui != null:
+			ui.visible = false
+		if ledger_layer != null:
+			ledger_layer.visible = false
 	if _args.has("shot"):
-		var at := float(_args.get("shot-at", "5"))
-		if world.t >= at:
+		var at: float = float(_args.get("shot-at", "5"))
+		if world != null and world.t >= at:
 			if not _args.has("_shot_wait"):
 				_args["_shot_wait"] = Engine.get_process_frames()
 			elif Engine.get_process_frames() - int(_args["_shot_wait"]) > 3:
-				var img := get_viewport().get_texture().get_image()
-				img.save_png(_args["shot"])
-				print("city: %s  %d ops  shot saved" % [world.clock(world.t), world.ops.size()])
+				var vp := get_viewport()
+				if vp != null and vp.get_texture() != null:
+					var img := vp.get_texture().get_image()
+					if img != null and not img.is_empty():
+						img.save_png(_args["shot"])
+				print("city: %s  %d ops  shot saved" % [world.clock(world.t) if world != null else "??:??", world.ops.size() if world != null else 0])
 				get_tree().quit()
 
 
@@ -437,11 +461,21 @@ func _test_hooks() -> void:
 func _save_pressure() -> void:
 	if director == null:
 		return
-	_pressure_t = world.t
+	if world != null:
+		_pressure_t = world.t
 	var f := FileAccess.open(Campaign.PRESSURE_PATH, FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify(director.pressure_data()))
-		f.close()
+	if f == null:
+		push_warning("_save_pressure: open failed -> %s" % error_string(FileAccess.get_open_error()))
+		return
+	# 4.72: `director` is untyped, so `:=` cannot infer a type here — declare it.
+	var payload: Dictionary = director.pressure_data()
+	if payload.is_empty():
+		push_warning("_save_pressure: empty pressure_data")
+	f.store_string(JSON.stringify(payload))
+	var err := f.get_error()
+	f.close()
+	if err != OK:
+		push_warning("_save_pressure: write error %d" % err)
 
 
 func _notification(what: int) -> void:

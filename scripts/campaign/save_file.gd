@@ -5,22 +5,40 @@ extends RefCounted
 
 
 static func write_json(path: String, data: Dictionary) -> bool:
+	# 4.72: JSON.stringify can fail on deeply nested data (e.g., recursive dept history)
 	var txt := JSON.stringify(data, "\t")
+	if txt == "":
+		push_warning("SaveFile.write_json: stringify produced empty string for %s" % path)
+		return false
 	var tmp := path + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
+		push_warning("SaveFile.write_json: open(%s) -> %s" % [tmp, error_string(FileAccess.get_open_error())])
 		return false
 	f.store_string(txt)
+	var flush_err := f.get_error()
 	f.close()
-	# check it reads back whole before it replaces anything
-	if typeof(_parse(FileAccess.get_file_as_string(tmp))) != TYPE_DICTIONARY:
+	if flush_err != OK:
+		DirAccess.remove_absolute(tmp)
+		return false
+	# 4.72: atomic check — file must parse back before we replace the good save
+	var check_txt := FileAccess.get_file_as_string(tmp)
+	if check_txt == "":
+		DirAccess.remove_absolute(tmp)
+		return false
+	if typeof(_parse(check_txt)) != TYPE_DICTIONARY:
 		DirAccess.remove_absolute(tmp)
 		return false
 	if FileAccess.file_exists(path):
 		if FileAccess.file_exists(path + ".bak"):
 			DirAccess.remove_absolute(path + ".bak")
-		DirAccess.rename_absolute(path, path + ".bak")
-	return DirAccess.rename_absolute(tmp, path) == OK
+		var bak_err := DirAccess.rename_absolute(path, path + ".bak")
+		if bak_err != OK:
+			push_warning("SaveFile.write_json: rename to .bak failed: %d" % bak_err)
+	var err := DirAccess.rename_absolute(tmp, path)
+	if err != OK:
+		push_warning("SaveFile.write_json: final rename failed: %d" % err)
+	return err == OK
 
 
 ## The save's data, or the backup's if the save is missing or damaged; null if neither.

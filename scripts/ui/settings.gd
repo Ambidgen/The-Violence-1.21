@@ -45,7 +45,9 @@ static func save_all() -> void:
 	var cf := ConfigFile.new()
 	for k in data:
 		cf.set_value("settings", k, data[k])
-	cf.save(PATH)
+	var err := cf.save(PATH)
+	if err != OK:
+		push_warning("Settings.save_all: ConfigFile.save(%s) -> %d" % [PATH, err])
 
 
 static func get_v(k: String):
@@ -81,14 +83,20 @@ static func apply() -> void:
 	if not _loaded:
 		load_all()
 	ensure_buses()
+	# 4.72: AudioServer.get_bus_index may return -1 if bus was removed externally
+	var eff_idx := AudioServer.get_bus_index("Effects")
+	var amb_idx := AudioServer.get_bus_index("Ambience")
 	AudioServer.set_bus_volume_db(0, _db(float(data["master"])))
-	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Effects"), _db(float(data["effects"])))
-	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Ambience"), _db(float(data["ambience"])))
+	if eff_idx != -1:
+		AudioServer.set_bus_volume_db(eff_idx, _db(float(data["effects"])))
+	if amb_idx != -1:
+		AudioServer.set_bus_volume_db(amb_idx, _db(float(data["ambience"])))
 	var Ink = load("res://scripts/view/ink.gd")
 	if Ink.red_ink_enabled != bool(data["red_ink"]):
 		Ink.set_red_ink(bool(data["red_ink"]))
 	if Ink.gore_enabled != bool(data["gore"]):
 		Ink.set_gore(bool(data["gore"]))
+	# 4.72: DisplayServer.window_* may throw in headless/embedded; guard it
 	if DisplayServer.get_name() != "headless":
 		var want := DisplayServer.WINDOW_MODE_FULLSCREEN if bool(data["fullscreen"]) else DisplayServer.WINDOW_MODE_WINDOWED
 		if DisplayServer.window_get_mode() != want:

@@ -1586,7 +1586,9 @@ func on_sees_police(o, e) -> void:
 	w.add_stress(o, 0.1, "police")
 	if rng.randf() >= p:
 		return
-	var away: Vector2 = (o.pos - e.pos).normalized()
+	# 4.72: guard zero-length away vector (gang at same pos as police)
+	var diff: Vector2 = o.pos - e.pos
+	var away: Vector2 = diff.normalized() if diff.length_squared() > 0.0001 else Vector2.from_angle(rng.randf() * TAU)
 	var dest := _refuge(o, away)
 	o.ticker["retreat"] = {"p": dest, "until": w.t + 25.0}
 	o.aim = {}
@@ -1804,7 +1806,11 @@ func _amb_step(v: Dictionary, home: Vector2, st_i: int, police: bool) -> void:
 				return
 			var reached := false
 			for m4 in medics:
-				w.move_to(m4, pat2.pos + (m4.pos - pat2.pos).normalized() * 0.6, "run", 0)
+				var to_pat: Vector2 = pat2.pos - m4.pos
+				if to_pat.length_squared() > 0.0001:
+					w.move_to(m4, pat2.pos + (m4.pos - pat2.pos).normalized() * 0.6, "run", 0)
+				else:
+					w.stop(m4)
 				if m4.pos.distance_to(pat2.pos) < 1.3:
 					reached = true
 			if reached:
