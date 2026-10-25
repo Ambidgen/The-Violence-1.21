@@ -104,10 +104,13 @@ func _test_campaign_bad_saves() -> void:
 	check(c.pressure is Dictionary and c.pressure.is_empty(), "a null pressure read degrades to {}")
 	check(c.short_history is Dictionary, "a null short history degrades to {}")
 
-	# a save with no department block at all must fail softly, not throw
+	# A save with no department block at all must fail *softly*: refused, so the caller
+	# can fall back to the .bak, rather than throwing before the title screen — and
+	# rather than loading as an empty department, which the next save would write over
+	# the backup. The previous assertion had this backwards.
 	var c2 = Campaign.new()
 	var ok2 := c2.from_data({"version": Campaign.VERSION, "seed": 1})
-	check(ok2, "campaign loads a save with no department block (no throw)")
+	check(not ok2, "campaign refuses a save with no department block (no throw)")
 
 	# and the version guard still rejects the future
 	var c3 = Campaign.new()

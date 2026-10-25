@@ -354,12 +354,11 @@ An officer sent to a call—or out canvassing—cannot answer another that week.
 End the week when you are ready. Pay goes out, the city's allocation comes in, wounds heal and courses finish. The Carrick Ledger prints its account of the week."""],
 	["Planning an operation", """Brief and Plan has three tabs.
 
-[Briefing] separates confirmed facts from estimates and shows the source and confidence of each tip. Canvassing brings two more tips; the officer is gone for the week.
-Briefing: what is known, what is estimated and how sure, and the tips. It is never complete. The readiness range compares the assigned force with that public intelligence; it is not a win probability. Canvassing sends an officer for two more tips and costs you that officer for the week.
+[Briefing] separates confirmed facts from estimates and shows the source and confidence of each tip. It is never complete. The readiness range compares the assigned force with that public intelligence; it is not a win probability. Canvassing sends an officer for two more tips and costs you that officer for the week.
 
 [Force] assigns up to thirty officers to five squads. Kit comes from the budget. Some equipment requires tactical training.
 
-[Orders] sets each squad's objectives—clear, arrest, rescue, contain, post or patrol—and its limits. A leader's experience determines how many orders the squad can follow.
+[Orders] sets each squad's objectives—clear, arrest, rescue, contain, post or patrol—and its limits: avoid, consolidate, a phase line, an entry door, a walking pace, weapons tight, knock and announce, pistols only, less-lethal first. A leader's experience determines how many orders the squad can afford.
 
 The map shows a clean red line. The building will not stay clean. Suggest a Plan gives you a starting point, not a decision: you choose the entry, rooms, people and risks. The debrief shows what changed and what held. Veteran Chief mode removes the suggestion.
 
@@ -369,11 +368,7 @@ At a rally, the briefing prices the threat estimate. Ten officers is the standin
 Fog of war shows what your officers can see. Everyone else remains at the radio's last reported position.
 
 Space pauses the operation. Keys 1–7 set speed. The slider replays what you have seen; the operation never rewinds. Abort orders every squad to withdraw. The call still counts as a failure, but a withdrawal with everyone alive scores better than a loss of life."""],
-	["Afterwards", """The debrief gives the result, each squad's work, the timeline, every officer and every finding. Findings list their evidence: body camera, phone video, witness or no source.
-
-A finding tied to an officer opens an Internal Affairs case. The officer gives a statement. A squadmate may give testimony. Either can agree with the evidence or contradict it; video does not change. You can clear the case, order a use-of-force review, suspend the officer or dismiss them. The union watches discipline. The coalition and the district attorney watch what you clear.
-Space pauses. 1-7 set the speed. Optional contact-aware fast-forward briefly returns to 1x for contact, casualties and important radio, then resumes after quiet; it never changes the simulation. The slider rewinds what you have seen; the operation itself never goes back. Abort withdraws every squad: a failure, but a failure with everyone alive always scores better than one with deaths."""],
-	["Afterwards", """The debrief shows the score arithmetic and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody. Click a timeline event to seek the replay to that moment.
+	["Afterwards", """The debrief shows the score arithmetic and lists every officer, every round and every finding, with its evidence: body camera, phone video, witnesses, or nobody. Click a timeline event to seek the replay to that moment. Contact-aware fast-forward can briefly return a high playback speed to 1x for contact, casualties and important radio; it changes presentation only.
 
 Findings that name an officer open an internal affairs case. Cases are sorted by severity and evidence, with weekly triage and filters; each case still gets its own decision. The officer gives a statement — and what they say may or may not match the bodycam. Integrity is the stat that decides, and being caught disagreeing with the tape costs more of it. The highest-integrity squadmate still standing gives testimony, which can firm up thin evidence or shake it, though video never slips. All of it is written on the case. The same stat prices the leak: clearing a case over video leaks about half the time, more when the named officer's integrity is low or their statement was already caught out, and the district attorney reads those worst of all. Clear it, send the officer to a use-of-force review, suspend them, or dismiss them. The union watches your discipline; the community coalition and the district attorney watch what you clear.
 

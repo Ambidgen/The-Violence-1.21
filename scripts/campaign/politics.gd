@@ -89,10 +89,12 @@ func start(seed_v: int) -> void:
 
 # ================================================================== reading it
 func share(c: String) -> float:
+	# An unknown id must read as 0, not raise: callers include the story archive,
+	# whose ids are not the candidate ids.
 	var tot := 0.0
 	for k in CAND_ORDER:
-		tot += maxf(1.0, float(polls[k]))
-	return 100.0 * maxf(1.0, float(polls[c])) / tot
+		tot += maxf(1.0, float(polls.get(k, 0.0)))
+	return 100.0 * maxf(1.0, float(polls.get(c, 0.0))) / maxf(1.0, tot)
 
 
 func leader() -> String:
@@ -616,7 +618,9 @@ func ending(dept) -> Dictionary:
 			else:
 				head = "Pell reviews your position out of existence."
 				lines.append("After %d weeks in deficit, the chief's office is folded into Municipal Services, Sub-Division C. Your desk is reassigned to parking enforcement; the line item is already approved." % int(dept.deficit_weeks))
-	lines.append("Forty weeks: %s succeeded, %d failed, %s went unattended. %s killed. %s stories reached the papers; %s lawsuits settled; %s cases leaked." % [
+	# `_n()` already carries the noun ("7 stories"), so the sentence must not add it
+	# again — the first engine run of a 40-week campaign printed "7 stories stories".
+	lines.append("Forty weeks: %s succeeded, %d failed, %s went unattended. %s killed. %s reached the papers; %s settled; %s leaked." % [
 		_n(int(record["successes"]), "operation"), int(record["failures"]), _n(int(record["unattended"]), "situation"),
 		_n(int(record["officers_killed"]), "officer"), _n(int(record["stories"]), "story", "stories"),
 		_n(int(record["settled"]), "lawsuit"), _n(int(record["leaks"]), "case")])

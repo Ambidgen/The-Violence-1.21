@@ -2,6 +2,71 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased — the first engine run, and what it found
+
+For the first time since the playtest pass landed, the tree was **executed**:
+Godot 4.7.2-stable was compiled from source on a two-core box (the engine's
+release downloads are outside this sandbox's network allow-list) and the headless
+suites were run against it. `RELEASE_READINESS.md` has the full picture; this
+entry is the changelog's part of it.
+
+**Green on 4.7.2:** the project imports (158 asset steps), all 118 scripts load,
+and the quick tier passes — `improvements`, `city_improvements`, `ops_ui`, `dept`,
+`orders`, `save`, `story`, `politics`, `city_link`, `godot472`. Beyond the quick
+tier: `determinism` (35 cases), `maps`, `nav_door` (175 doors, 0 problems),
+`city_test`, `habits --strict`, `brains --n=8`, `civ --n=40`, and a full 40-week
+`op_test --chief=sensible` campaign through to its election.
+
+- **The determinism fixture did not need resetting.** The playtest-pass note
+  below expected `--write` after Q1/Q6/Q4. Every one of the 35 seeded cases
+  reproduces byte-identically. Those orders and the rally reset simply never fire
+  in the fixture's first-week operations — so the net does not yet cover them,
+  and a case that does is worth adding.
+- **A save with `"kit": null` still raised on the boot path.**
+  `_fix_record()` called `Equipment.normalize(r.get("kit", default))`; `get()`
+  returns the null *value* when the key is present and null, so the call ran with
+  `null` and logged `Cannot convert argument 1 from Nil to Dictionary` before the
+  fallback one line later could help. The argument is now chosen before the call.
+- **`payroll()` indexed `status` on records that had lost it**, raising
+  `Invalid access to property or key 'status'` during the same load. `_fix_record`
+  now restores the identity fields a damaged record can be missing (`status`,
+  `name`, `rank`, `ech`, the habit arrays, the course queue) and payroll reads the
+  key with a default.
+- **The end-of-campaign summary doubled its nouns**: "7 stories stories reached
+  the papers; 3 lawsuits lawsuits settled". `_n()` already carries the noun. Only
+  a week-40 run reaches that line, which is why nothing had ever seen it.
+- **The story archive read Dana Okonjo-Vale's poll share as 0.0%**, and logged
+  `Invalid access to property or key 'dana'` every time the page opened:
+  `contact_status()` passed the archive's contact id to `politics.share()`, whose
+  keys are the candidate ids (`"okonjo"`). The ids are mapped now, and `share()`
+  reads with a default so an unknown id is 0.0 rather than an engine error.
+  `story_test` passed throughout — only the log showed it, which is why the runner
+  now reports a suite that logs a script error.
+- **One assertion in `godot472_test` was inverted**: a campaign save with no
+  department block is refused (`from_data` → false) rather than loaded as an empty
+  department — which is the safe behaviour, since the next save would otherwise
+  overwrite the `.bak`. The test now asserts the refusal and says why.
+
+**Not yet run:** the soak tier — `balance_test --gate`, `balance_matrix_test`,
+`scale_playtest --gate` (the balance table below is still "pending"), `equip`,
+`stall`, `fuzz`, `city_sim`, `perf`, and `op_test --chief=manual` (about 1,000 s
+for 40 weeks; it did not fit in this session).
+
+### New tooling
+
+- **`tools/run_tests.sh`** — one command for the suites, in tiers
+  (`--check`, `--quick`, `--full`, `--soak`, `--list`), with per-suite timeouts,
+  a log per suite in `build/test-logs/`, and log scanning for the 18 harnesses
+  that cannot fail a build on their own.
+- **`tools/ci/ci.yml`** — the static audit and version-sync check, the quick
+  tier on 4.7.2 and on 4.4.1 (the release engine), the full tier on `main`. It
+  sits one directory over from `.github/workflows/` because the automation
+  account that pushed this branch may not create workflow files; moving it there
+  is the whole activation.
+- **`tools/sync_version.py --check`** — reports drift between
+  `scripts/version.gd`, `project.godot` and `export_presets.cfg` without
+  rewriting them, so CI can refuse a half-done version bump.
+
 ## Unreleased — the Godot 4.7.2 debug pass
 
 A whole-tree pass with **Godot 4.7.2 as the primary engine** (4.4.1 stays
@@ -260,13 +325,11 @@ a cut between panels:
 From the ten-question playtest survey (`PLAYTEST_REPORT.md`), taken in the
 report's own order: Q1+Q6, then Q2+Q3, then the Q5 measurement matrix, then
 Q4/Q10/Q8/Q9, Q7 last. Q1 and Q6 touch the simulation, and Q4 changes what
-"Suggest a plan" produces for the fixture's first-week operations, so the
-determinism fixture needs a one-time
-`godot --headless --path . -s res://tests/determinism_test.gd -- --write` on a
-Godot 4.4+ machine before the suite is green again; the rest of the pass is
-engine-checked but was written where no Godot binary could run, so the suites
-below want one confirming run each, and the balance table wants its actuals
-filled in from that first run.
+"Suggest a plan" produces for the fixture's first-week operations, so this entry
+expected the determinism fixture to need a one-time
+`godot --headless --path . -s res://tests/determinism_test.gd -- --write`. **The
+first engine run (above) showed it does not** — all 35 cases reproduce unchanged;
+the balance table still wants its actuals from a soak run.
 
 - **Stress now has a rally reset.** Stress decayed at 0.1/s only in quiet seconds,
   which in a room-to-room raid was almost never (a near miss, a hit or a sighting
