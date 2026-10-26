@@ -68,6 +68,8 @@ func _ready() -> void:
 	overlay = Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# a window resize while a short is playing must move the plate text with it
+	overlay.resized.connect(_layout_plates)
 	add_child(overlay)
 
 	hint = Label.new()
@@ -273,7 +275,11 @@ func _build_plates(key: String, text: Dictionary) -> void:
 func _layout_plates() -> void:
 	if _plates.is_empty():
 		return
-	var vp: Vector2 = get_viewport().get_visible_rect().size
+	# The overlay is the full-rect Control the plates are parented to, so its size is the
+	# canvas grid the slots are normalised against. (The viewport's visible rect is in
+	# window pixels, which drift from that grid at any content_scale_factor but 1.0 —
+	# e.g. the --ui-scale test hook, or a resized window mid-video.)
+	var vp: Vector2 = overlay.size if overlay != null and overlay.size.x > 0.0 and overlay.size.y > 0.0 else get_viewport().get_visible_rect().size
 	for p in _plates:
 		var sl: Dictionary = p["slot"]
 		var lab: Label = p["label"]

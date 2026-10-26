@@ -11,6 +11,7 @@ extends SceneTree
 
 const Campaign = preload("res://scripts/campaign/campaign.gd")
 const Department = preload("res://scripts/campaign/department.gd")
+const Politics = preload("res://scripts/campaign/politics.gd")
 const SaveFile = preload("res://scripts/campaign/save_file.gd")
 const Nav = preload("res://scripts/sim/nav.gd")
 const Version = preload("res://scripts/version.gd")
@@ -29,6 +30,8 @@ func _init() -> void:
 	_test_version_sync()
 	_test_department_bad_saves()
 	_test_campaign_bad_saves()
+	_test_politics_bad_saves()
+	_test_nav_without_build()
 	print("godot472_test: %s" % ("PASS" if fails == 0 else "%d FAILED" % fails))
 	quit(1 if fails > 0 else 0)
 
@@ -117,6 +120,50 @@ func _test_campaign_bad_saves() -> void:
 	check(not c3.from_data({"version": Campaign.VERSION + 99}), "a save from a newer version is still refused")
 	var d3 = Department.new()
 	check(not d3.from_data({"version": 0}), "a v0 department save is still refused")
+
+
+## The same standard one layer down: Politics.from_data was the last save reader still
+## indexing `d["allies"][a]["standing"]`, `press[i]["week"]` and `polls[c]` directly, so an
+## incomplete save raised *after* the department had loaded cleanly.
+func _test_politics_bad_saves() -> void:
+	var cases := [
+		["no keys at all", {}],
+		["null trust, allies, polls, press", {"trust": null, "allies": null, "polls": null,
+			"press": null, "pending": null, "record": null, "result": null}],
+		["an ally with no standing", {"allies": {"council": {}, "union": {"standing": null}, "da": 7}}],
+		["junk in the trust list", {"trust": [{}, null, "abc"]}],
+		["press and pending holding junk", {"press": [null, 3, {"week": "junk"}],
+			"pending": ["x", {"due": "late", "kind": "story"}]}],
+		["polls with non-numbers", {"polls": {"kettering": {}, "okonjo": "abc", "pell": null}}],
+		["junk record and result", {"record": {"civ_hit": "many"}, "result": "Pell won"}],
+	]
+	for c in cases:
+		var what: String = c[0]
+		var politics_data: Dictionary = c[1]
+		var pol = Politics.new()
+		pol.from_data(politics_data, 4242)
+		# the reads every screen makes, on the data that just came back
+		var stands: Array = []
+		for a in Politics.ALLY_ORDER:
+			stands.append(pol.standing(a))
+		check(stands.size() == 4, "politics loads with " + what + " (no throw)")
+		check(pol.lost("da") is bool, "  ...and a lost read (" + what + ")")
+		check(pol.share("okonjo") >= 0.0, "  ...and a poll share (" + what + ")")
+		check(pol.week_press(1) is Array, "  ...and the week's press (" + what + ")")
+		check(pol.avg_trust() >= 0.0, "  ...and the ward average (" + what + ")")
+		check(pol.trust.size() == 6, "  ...and six wards of trust (" + what + ")")
+		# the campaign wrapper is the path that actually runs at boot
+		var good = Campaign.new()
+		good.start(4242)
+		var camp = Campaign.new()
+		var ok := camp.from_data({"version": Campaign.VERSION, "seed": 4242, "politics": politics_data,
+			"department": good.dept.to_data(), "board": [], "past": [], "pressure": {}, "short_history": {}})
+		check(ok and camp.politics != null, "campaign loads the same save with " + what + " (no throw)")
+	# a missing ally key reads its default rather than raising
+	var p2 = Politics.new()
+	p2.from_data({"allies": {"council": {"standing": 10, "lost": true}}}, 7)
+	check(p2.standing("union") == int(Politics.ALLIES["union"]["start"]), "a missing ally reads its starting standing")
+	check(p2.standing("nobody") == 50, "an unknown ally id reads a default, not an error")
 
 
 ## A navigator that was never built used to index into an empty grids array.
