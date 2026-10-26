@@ -1,11 +1,11 @@
 # Playtest report — The Violence v1.2.1
 
-Date: 2026-10-22 · Branch: `arena/d0e5e6df-theviolence-v1-2-1` · Build: commit `20163c5`
+Date: 2026-10-22 · Build: commit `20163c5`
 
 ## Method and caveat
 
-The sandbox has no Godot 4.4+ binary and the engine's release downloads are outside
-this environment's network allow-list, so no live runs were possible. This is a
+The machine running this report has no Godot 4.4+ binary and the engine's release
+downloads are unreachable from it, so no live runs were possible. This is a
 **static playtest** built from:
 
 - all 30k lines of simulation, campaign and city code under `scripts/`;
@@ -381,8 +381,8 @@ chosen.
     `tools/level_port.py`, hand ports of the nav raster and of the level/wall/door builder,
     run over the twelve shipped maps (12 maps, 175 doors, ~20 s). They are diagnostics, not
     the build: they will drift from the GDScript and are worth nothing against a real
-    engine. Open risk: no Godot binary is reachable from this sandbox (release downloads
-    redirect to a host outside the allow-list), so the GDScript has been checked only by
+    engine. Open risk: no Godot binary was reachable from the analysis machine (release
+    downloads were unreachable from it), so the GDScript has been checked only by
     `gdparse` (all four changed files parse; repo-wide parse-failure count still 3, the
     same pre-existing gdtoolkit lambda limits). The next runnable step is
     `godot --headless --path . -s res://tests/nav_door_test.gd`.

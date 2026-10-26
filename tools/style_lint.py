@@ -3,15 +3,15 @@
 style_lint.py — diagnostic prose metrics for the Noir Prose Bible.
 
 This is a *diagnostic*, not a judge. It measures surface features of a manuscript and
-compares them with the editorial voice cards in series.json. It cannot hear whether
+compares them with the editorial voice cards in data/series.json. It cannot hear whether
 a joke lands or a silence is earned.
 
-Usage:
-    python3 style_lint.py chapter.md
-    python3 style_lint.py chapter.md --voice chandler
-    python3 style_lint.py chapter.md --voice ellroy --compare leonard
-    python3 style_lint.py chapter.md --voice connelly --json
-    python3 style_lint.py --list-voices
+Usage (from the repository root):
+    python3 tools/style_lint.py chapter.md
+    python3 tools/style_lint.py chapter.md --voice chandler
+    python3 tools/style_lint.py chapter.md --voice ellroy --compare leonard
+    python3 tools/style_lint.py chapter.md --voice connelly --json
+    python3 tools/style_lint.py --list-voices
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Iterable
 
-DATA_PATH = Path(__file__).resolve().parent / "series.json"
+DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "series.json"
 
 # --------------------------------------------------------------------------------------
 # Lexicons
