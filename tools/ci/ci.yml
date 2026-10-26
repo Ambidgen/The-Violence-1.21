@@ -1,8 +1,7 @@
 # WHERE THIS FILE LIVES
 #
-# This is the CI definition, kept here because the automation account that pushed
-# this branch is not allowed to create files under .github/workflows/. Activate it
-# with:
+# This is the CI definition, kept next to the runner instead of under
+# .github/workflows/. Activate it with:
 #
 #     mkdir -p .github/workflows && git mv tools/ci/ci.yml .github/workflows/ci.yml
 #

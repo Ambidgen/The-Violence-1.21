@@ -1,6 +1,6 @@
 # The Violence — release readiness
 
-**Analysis date:** 2026-10-24 · **Branch:** `arena/b54212be-theviolence-v1-2-1` · **Base commit:** `5a98a65` ("Godot 4.7.2 debug pass (#11)") · **Version in tree:** 1.2.1
+**Analysis date:** 2026-10-24 · **Base commit:** `5a98a65` ("Godot 4.7.2 debug pass (#11)") · **Version in tree:** 1.2.1
 
 This document is an assessment, not a changelog entry: what state the game is
 actually in, what stands between it and a release, and the order to do the work
@@ -19,7 +19,7 @@ passes have landed in the tree — the Godot 4.7.2 debug pass, the doorway/nav
 pass, and the ten-item playtest pass (Q1–Q10) — and until this pass **none of them had been
 run on an engine**. The changelog says so in its own words: *"pending first run"*,
 *"no Godot binary could run here"*. For this assessment I compiled Godot 4.7.2
-from source in the sandbox and ran them: the quick tier is green, the determinism
+from source on the analysis machine and ran them: the quick tier is green, the determinism
 fixture is intact, and **three boot-path defects, a text bug and a wrong statistic fell out
 immediately** (§7) — which is the argument for doing this before
 shipping. There was no CI and no test runner, roughly half the
@@ -173,7 +173,7 @@ else. Record the filled balance table in `CHANGELOG.md`, then delete the
 ### Phase 1 — Make the branch stay true (one week)
 
 1. Give the 15 diagnostics an exit code (`quit(1 if failures > 0 else 0)`); then delete the log-scanning fallback from the runner.
-2. Move `tools/ci/ci.yml` to `.github/workflows/ci.yml` (or reconnect GitHub with workflow scope) and get it green on both engines; make the full tier required on `main`.
+2. Move `tools/ci/ci.yml` to `.github/workflows/ci.yml` and get it green on both engines; make the full tier required on `main`.
 3. Bump to **1.3.0** in `scripts/version.gd`, run `python3 tools/sync_version.py`, commit all three files.
 4. Add `LICENSE`, `THIRD_PARTY_NOTICES`, and confirm the Remotion position.
 5. Move the prose corpus and the duplicate READMEs out of the game root; delete `download`.
@@ -201,7 +201,7 @@ else. Record the filled balance table in `CHANGELOG.md`, then delete the
 | --- | --- |
 | `scripts/ui/front.gd` | Manual repaired: two duplicate "Afterwards" pages merged into one, the doubled "Planning an operation" paragraph de-duplicated, the order list now names all nine constraints including **Less-lethal first**, and the contact-aware fast-forward note moved to the debrief page where it belongs. 9 pages → 8. |
 | `tools/run_tests.sh` | New. Tiered headless runner (`--check/--quick/--full/--soak/--list`), per-suite logs in `build/test-logs/`, timeouts, exit codes, and log scanning for the harnesses that cannot fail a build. |
-| `tools/ci/ci.yml` | New. Static audit + version-sync check, quick tier on Godot 4.7.2 **and** 4.4.1, full tier on `main` and on demand, logs uploaded on failure. This working session's GitHub app cannot create files under `.github/workflows/`, so it ships one directory over: `mkdir -p .github/workflows && git mv tools/ci/ci.yml .github/workflows/ci.yml` activates it, and nothing inside refers to the path. |
+| `tools/ci/ci.yml` | New. Static audit + version-sync check, quick tier on Godot 4.7.2 **and** 4.4.1, full tier on `main` and on demand, logs uploaded on failure. It ships one directory over from where GitHub expects workflows: `mkdir -p .github/workflows && git mv tools/ci/ci.yml .github/workflows/ci.yml` activates it, and nothing inside refers to the path. |
 | `tools/sync_version.py` | New `--check` mode: reports version drift between `scripts/version.gd`, `project.godot` and `export_presets.cfg` and exits 1, without rewriting. Rejects unknown arguments. |
 | `README.md` | Headless-checks section now leads with the runner and the tiers; the individual commands stay for debugging. |
 | `scripts/campaign/department.gd` | Two boot-path defects found by the first engine run and fixed: `Equipment.normalize()` was handed `null` for a save with `"kit": null`; `payroll()` indexed `status` on records that had lost it. `_fix_record` now fills the identity fields a damaged record can lack. |
@@ -222,9 +222,9 @@ Verification of these changes:
 
 ### The engine was built for this pass
 
-No Godot binary ships in this sandbox and `release-assets.githubusercontent.com`
-is outside its network allow-list, so **Godot 4.7.2-stable was compiled from
-source here** (codeload tarball; scons; `x11=no wayland=no alsa=no pulseaudio=no
+No Godot binary was available on the analysis machine and
+`release-assets.githubusercontent.com` could not be reached from it, so
+**Godot 4.7.2-stable was compiled from source here** (codeload tarball; scons; `x11=no wayland=no alsa=no pulseaudio=no
 dbus=no udev=no speechd=no fontconfig=no lto=none -j2`; ~46 minutes on two cores,
 158 MB, `4.7.2.stable.custom_build`). That makes the rest of this section
 measured rather than argued. The build is in `/tmp`, not in the repo.

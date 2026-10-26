@@ -113,7 +113,7 @@ unbuilt fallback, and re-checks that the version metadata is in sync.
 ### Static checks without an engine
 
 `tools/gd47_check.py` is the audit used for the 4.7.2 pass. It needs no Godot
-binary, so it runs in CI or in a sandbox with no engine:
+binary, so it runs in CI or on a machine with no engine:
 
 ```sh
 python3 tools/gd47_check.py            # scripts/, tests/, tools/
@@ -137,5 +137,10 @@ Some harnesses accept additional options documented in their script headers. Hea
 - `scripts/city/`: city generation, navigation, director, roads, and emergency response.
 - `scripts/view/`: plan, actors, overlays, decals, replay, and presentation settings.
 - `tests/`: engine-backed unit, regression, determinism, balance, and soak harnesses.
+- `tools/`: test runner, CI definition, static audit, build and asset tooling, plus `tools/README.md` for the prose linter.
+- `cinematics/`: Remotion sources for the opening films and interstitial shorts.
+- `assets/`: cutscene video, synthesised SFX, and SVG art.
+- `docs/prose-bible/`: a crime-fiction style guide (prose craft, not gameplay) with its twenty voice cards under `series/`.
+- `release/`: where the built Windows executable lands (git-ignored; see `RELEASE.md`).
 
 See `CHANGELOG.md` for historical release notes and the in-game **How to play** pages for the full mechanics reference.

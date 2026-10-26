@@ -4,7 +4,7 @@ gd47_check.py - static checks for The Violence against Godot 4.7.x.
 
 The engine's 4.7 GDScript analyzer is stricter than 4.4's. This is the audit that
 was run over the tree for the 1.2.2 pass; it needs no Godot binary, so it can run
-in CI or in a sandbox with no engine. It is a *linter*, not a compiler: it finds
+in CI or on a machine with no engine. It is a *linter*, not a compiler: it finds
 the shapes that have broken this project, not every possible parse error. Run the
 engine's own `--check-only` (or tests/_check.gd) alongside it.
 

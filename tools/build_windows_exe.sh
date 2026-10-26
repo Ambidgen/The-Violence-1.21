@@ -2,7 +2,7 @@
 # Build release/TheViolence.exe: one self-contained Windows executable, no DLLs,
 # no installer, no Godot installation on the player's machine.
 #
-# The sandbox this was written in cannot download github.com release assets (the
+# The machine this was written in cannot download github.com release assets (the
 # Godot editor and the official export templates both live there), so this script
 # builds the two engine binaries it needs straight from the engine source:
 #

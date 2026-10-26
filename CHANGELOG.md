@@ -6,7 +6,7 @@ Newest first. The README covers the game as it stands; this file keeps the histo
 
 For the first time since the playtest pass landed, the tree was **executed**:
 Godot 4.7.2-stable was compiled from source on a two-core box (the engine's
-release downloads are outside this sandbox's network allow-list) and the headless
+release downloads were unreachable from it) and the headless
 suites were run against it. `RELEASE_READINESS.md` has the full picture; this
 entry is the changelog's part of it.
 
@@ -50,7 +50,7 @@ tier: `determinism` (35 cases), `maps`, `nav_door` (175 doors, 0 problems),
 **Not yet run:** the soak tier — `balance_test --gate`, `balance_matrix_test`,
 `scale_playtest --gate` (the balance table below is still "pending"), `equip`,
 `stall`, `fuzz`, `city_sim`, `perf`, and `op_test --chief=manual` (about 1,000 s
-for 40 weeks; it did not fit in this session).
+for 40 weeks; it did not fit in the time available).
 
 ### New tooling
 
@@ -60,12 +60,32 @@ for 40 weeks; it did not fit in this session).
   that cannot fail a build on their own.
 - **`tools/ci/ci.yml`** — the static audit and version-sync check, the quick
   tier on 4.7.2 and on 4.4.1 (the release engine), the full tier on `main`. It
-  sits one directory over from `.github/workflows/` because the automation
-  account that pushed this branch may not create workflow files; moving it there
-  is the whole activation.
+  sits one directory over from `.github/workflows/`; moving it there is the
+  whole activation.
 - **`tools/sync_version.py --check`** — reports drift between
   `scripts/version.gd`, `project.godot` and `export_presets.cfg` without
   rewriting them, so CI can refuse a half-done version bump.
+
+### Repository hygiene
+
+The repo-hygiene item from `RELEASE_READINESS.md` (§4, row 8) is done:
+
+- The crime-fiction style guide that sat in the root is now under
+  `docs/prose-bible/`, its twenty voice cards under `docs/prose-bible/series/`
+  — the layout the corpus's own cross-references always assumed.
+- `style_lint.py` and its tests moved to `tools/`, the voice cards to
+  `data/series.json`, the sample scenes to `tools/samples/`; the linter's
+  documentation is `tools/README.md`. All of the tool's paths now match what
+  the docs claim.
+- The two duplicate root readmes are gone (`README (1).md` became the series
+  index inside `docs/prose-bible/series/`; `README (2).md` became
+  `tools/README.md`), so exactly one `README.md` stands at the root. The root
+  readme's source map now names every top-level directory.
+- `download`, a stray two-line file, was deleted; `tests/godot472_test.gd`
+  gained the `.uid` file every other script already had.
+- Branch names and build-environment details were removed from the playtest
+  and release-readiness reports and the tooling headers, so the reports read
+  as dated analysis rather than as a log of one machine's setup.
 
 ## Unreleased — the Godot 4.7.2 debug pass
 
@@ -76,7 +96,7 @@ a warning into a stop, plus the crash-on-boot paths reachable with data the
 code assumed could never arrive.
 
 **Caveat on verification.** No Godot binary could be run here — the engine's
-release downloads sit outside this environment's network allow-list. Every
+release downloads were unreachable from the machine. Every
 finding below is from static analysis, and every fix is written so that a
 correct file takes exactly the same path it did before. Run the harnesses to
 confirm (see the README's headless checks).
