@@ -10,7 +10,7 @@ the pass ended): a cross-script symbol and arity check over all 118 GDScript fil
 (654 `Alias.func(...)` calls and every preload, no missing member and no wrong
 argument count), duplicate dictionary keys, orphaned `res://` paths, duplicate
 `class_name`s, doubled words in player text, `to_data`/`from_data` key symmetry, and
-a re-audit of the 89 habit ids and 41 equipment keys. The asset pipeline was re-run:
+a re-audit of the 89 habit ids and every equipment id the code names. The asset pipeline was re-run:
 `tools/make_placeholders.py` reproduces all 123 SVGs byte-for-byte.
 
 What it found:
