@@ -399,6 +399,9 @@ func show_manual(from: String) -> void:
 	visible = true
 	screen = "manual"
 	Settings.set_v("seen_manual", true)
+	# MANUAL[manual_page] is indexed below: the --front=manual --page=N screenshot hook
+	# can be handed a page that does not exist, and a clamp costs one line.
+	manual_page = clampi(manual_page, 0, MANUAL.size() - 1)
 	var v := _page("How to play", 980.0)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 22)

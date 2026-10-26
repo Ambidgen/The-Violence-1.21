@@ -2,6 +2,69 @@
 
 Newest first. The README covers the game as it stands; this file keeps the history.
 
+## Unreleased — a general debug pass
+
+A tree-wide sweep for the classes of fault this project has already been bitten by,
+run without an engine (the 4.7.2 build in this sandbox had not finished linking when
+the pass ended): a cross-script symbol and arity check over all 118 GDScript files
+(654 `Alias.func(...)` calls and every preload, no missing member and no wrong
+argument count), duplicate dictionary keys, orphaned `res://` paths, duplicate
+`class_name`s, doubled words in player text, `to_data`/`from_data` key symmetry, and
+a re-audit of the 89 habit ids and every equipment id the code names. The asset pipeline was re-run:
+`tools/make_placeholders.py` reproduces all 123 SVGs byte-for-byte.
+
+What it found:
+
+- **`Politics.from_data` was the last save reader that could still throw on a save
+  that parses but lost a key** — `d["allies"][a]["standing"]`, `press[i]["week"]`,
+  `polls[c]` and `record[k]` all indexed straight into file data, and a trust list
+  with a junk entry ran `int({})`. It runs on the boot path, one layer under the
+  `Department.from_data` the 4.7.2 pass hardened, so an incomplete save took the
+  game down before the title screen instead of falling back to the `.bak`. Every read
+  is now typed and defaulted, `standing()`/`lost()` answer for an ally the save does
+  not mention, `week_press()` skips malformed entries, and a short trust list is
+  filled from the ward table so City Hall cannot index nothing. `godot472_test`
+  covers seven damaged saves plus the campaign wrapper that reaches it.
+- **`tests/godot472_test.gd` never called `_test_nav_without_build()`.** The file's
+  own header, the README and `RELEASE_READINESS.md` all cite the navigator's unbuilt
+  fallback as one of the three things that regression locks down; the function was
+  defined and never invoked. It is in `_init()` now.
+- **`tests/_check.gd` printed `FAILED` and exited 0**, so the cheapest gate in the
+  tree could not fail a build (the release-readiness pass counted it among the 18
+  harnesses that cannot). It now counts failures, exits 1, prints how many scripts
+  it scanned, reports a directory it cannot open, and scans `tests/` and `tools/`
+  as well as `scripts/` — the tier claims to load *every* script.
+- **`tools/patch_rc.py` wrote a file named after any argument it did not recognise.**
+  `patch_rc.py --help` created a file called `--help` in the working directory (it
+  did, in this session), and the release script's typo would have become a stray
+  resource script. It now parses arguments, has `--help`, refuses a path that is not
+  a `godot_res.rc`, and refuses a `detect.py` that is not the Windows one. Its
+  version was also a hardcoded `1.2.1.0` next to the canonical
+  `scripts/version.gd`; it is read from there now, and the four-part conversion no
+  longer eats a real zero (`rstrip(",0")` turned a 1.2.10.0 build into 1,2,1,0).
+- **`scripts/ui/shorts.gd` laid its slot text out against the viewport's visible
+  rect**, which is in window pixels, while the slots are normalised to the canvas
+  grid the overlay is anchored to — the two disagree at any `content_scale_factor`
+  other than 1.0 (`--ui-scale`) and after a window resize, which also never
+  re-laid the plates out. It now measures the overlay itself and re-lays out on
+  `resized`.
+- **`front.show_manual()` indexed `MANUAL[manual_page]` unclamped**, so the
+  `--front=manual --page=N` screenshot hook crashed the game on a page that does not
+  exist (and on a crafted `--page=abc`, which reads as 0 only by luck of Godot's
+  String-to-int conversion). One clamp, at the top of the function.
+- **`cinematics/package-lock.json` was still at 1.0.0** while `package.json` is
+  1.2.0: a lockfile that had not been regenerated since the rename, which is what
+  `npm install` rewrites on any fresh checkout. Committed in sync.
+- **`tools/requirements.txt`** — `make_sounds.py`, `mix_soundtrack.py` and
+  `make_ads.py` import numpy and scipy and nothing said so; the README's "the game
+  has no package dependencies" is true and stays true, but the asset tools do.
+
+Still open, and deliberately not touched here: the soak tier (the 11 balance cells
+are still "pending first run"), the ten unwired shorts, `geom._stops`,
+`level._room_post`, `roads._nxy` and `doors_view._cover` are dead code left from
+superseded implementations, and `tests/godot472_test.gd` is the one script in the
+tree without a `.uid` (Godot writes it on first import).
+
 ## Unreleased — the first engine run, and what it found
 
 For the first time since the playtest pass landed, the tree was **executed**:

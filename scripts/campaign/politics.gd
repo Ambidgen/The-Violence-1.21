@@ -105,12 +105,22 @@ func leader() -> String:
 	return best
 
 
+## An unknown ally id reads as the default rather than raising: callers include screens
+## that walk the roster, and a save can be missing an ally (see from_data).
+func _ally_rec(a: String) -> Dictionary:
+	if not (allies.get(a) is Dictionary):
+		var start_standing := int(ALLIES[a]["start"]) if ALLIES.has(a) else 50
+		allies[a] = {"standing": start_standing, "lost": false}
+	var al: Dictionary = allies[a]
+	return al
+
+
 func standing(a: String) -> int:
-	return int(allies[a]["standing"])
+	return _int_of(_ally_rec(a).get("standing", 0))
 
 
 func lost(a: String) -> bool:
-	return bool(allies[a]["lost"])
+	return bool(_ally_rec(a).get("lost", false))
 
 
 func avg_trust() -> float:
@@ -121,13 +131,13 @@ func avg_trust() -> float:
 
 
 func week_press(week: int) -> Array:
-	return press.filter(func(p): return int(p["week"]) == week)
+	return press.filter(func(p): return p is Dictionary and _int_of(p.get("week", -1)) == week)
 
 
 # ================================================================== moving it
 func _ally(a: String, d: int, dept, lines: Array) -> void:
-	var al: Dictionary = allies[a]
-	al["standing"] = clampi(int(al["standing"]) + d, 0, 100)
+	var al: Dictionary = _ally_rec(a)
+	al["standing"] = clampi(_int_of(al.get("standing", 0)) + d, 0, 100)
 	if not al["lost"] and int(al["standing"]) < LOST:
 		al["lost"] = true
 		lines.append("LOST: %s (%s). %s" % [ALLIES[a]["name"], ALLIES[a]["title"], ALLIES[a]["lost"]])
@@ -171,7 +181,7 @@ func _trust(ward_i: int, d: int) -> void:
 
 
 func _poll(c: String, d: float) -> void:
-	polls[c] = clampf(float(polls[c]) + d, 3.0, 200.0)
+	polls[c] = clampf(_float_of(polls.get(c, 0.0)) + d, 3.0, 200.0)
 
 
 func _headline(week: int, head: String, body: String, kind: String) -> void:
@@ -635,28 +645,71 @@ func to_data() -> Dictionary:
 		"last_grant": last_grant, "rng_state": str(rng.state)}
 
 
+## A save that parses as JSON but lost a key must not throw here. This runs before the
+## title screen, on the same path Department.from_data was hardened for: SaveFile only
+## falls back to the .bak when the file fails to *parse*. `start()` has already written
+## the fresh defaults, so anything missing below keeps its default instead of raising.
 func from_data(d: Dictionary, seed_v: int) -> void:
 	start(seed_v)
 	if d.is_empty():
 		return
+	var raw_trust: Array = d.get("trust", []) if d.get("trust", []) is Array else []
 	trust = []
-	for v in d.get("trust", []):
-		trust.append(int(v))
-	for a in d.get("allies", {}):
-		allies[a] = {"standing": int(d["allies"][a]["standing"]), "lost": bool(d["allies"][a]["lost"])}
-	for c in d.get("polls", {}):
-		polls[c] = float(d["polls"][c])
-	pending = d.get("pending", [])
-	for p in pending:
+	for v in raw_trust:
+		trust.append(clampi(_int_of(v), 0, 100))
+	# a short ward list would leave `_trust()` and the City Hall screen indexing nothing
+	while trust.size() < Situations.WARDS.size():
+		trust.append(_int_of(Situations.WARDS[trust.size()].get("trust", 50)))
+	var raw_allies: Dictionary = d.get("allies", {}) if d.get("allies", {}) is Dictionary else {}
+	for a in ALLY_ORDER:
+		var saved = raw_allies.get(a, {})
+		if not (saved is Dictionary):
+			continue
+		allies[a] = {"standing": clampi(_int_of(saved.get("standing", ALLIES[a]["start"])), 0, 100),
+			"lost": bool(saved.get("lost", false))}
+	var raw_polls: Dictionary = d.get("polls", {}) if d.get("polls", {}) is Dictionary else {}
+	for c in CAND_ORDER:
+		if raw_polls.has(c):
+			polls[c] = _float_of(raw_polls[c])
+	pending = []
+	var raw_pending: Array = d.get("pending", []) if d.get("pending", []) is Array else []
+	for p0 in raw_pending:
+		if not (p0 is Dictionary):
+			continue
+		var p: Dictionary = p0
 		for k in ["due", "ward_i", "vis", "hit", "killed", "excessive", "cost", "op_week"]:
 			if p.has(k):
-				p[k] = int(p[k])
-	press = d.get("press", [])
-	for p2 in press:
-		p2["week"] = int(p2["week"])
-	for k2 in d.get("record", {}):
-		record[k2] = int(d["record"][k2])
+				p[k] = _int_of(p[k])
+		pending.append(p)
+	press = []
+	var raw_press: Array = d.get("press", []) if d.get("press", []) is Array else []
+	for p2 in raw_press:
+		if not (p2 is Dictionary):
+			continue
+		p2["week"] = _int_of(p2.get("week", 0))
+		press.append(p2)
+	var raw_record: Dictionary = d.get("record", {}) if d.get("record", {}) is Dictionary else {}
+	for k2 in raw_record:
+		record[k2] = _int_of(raw_record[k2])
 	ended = bool(d.get("ended", false))
-	last_grant = int(d.get("last_grant", -99))
-	result = d.get("result", {})
+	last_grant = _int_of(d.get("last_grant", -99))
+	result = d.get("result", {}) if d.get("result", {}) is Dictionary else {}
 	rng.state = String(d.get("rng_state", "0")).to_int()
+
+
+## JSON gives back numbers as floats and a damaged save can give back anything at all;
+## these read a scalar without raising on the wrong type (int(Dictionary) is an error).
+static func _int_of(v) -> int:
+	if v is int or v is float or v is bool:
+		return int(v)
+	if v is String:
+		return String(v).to_int()
+	return 0
+
+
+static func _float_of(v) -> float:
+	if v is int or v is float or v is bool:
+		return float(v)
+	if v is String:
+		return String(v).to_float()
+	return 0.0
